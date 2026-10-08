@@ -1,0 +1,28 @@
+{
+  "name": "gy906",
+  "author": "Robô Inspetor",
+  "pins": [
+    "VIN",
+    "GND",
+    "SCL",
+    "SDA"
+  ],
+  "controls": [
+    {
+      "id": "ambient_temp",
+      "label": "Temp Ambiente (°C)",
+      "type": "slider",
+      "min": -20,
+      "max": 100,
+      "value": 25
+    },
+    {
+      "id": "object_temp",
+      "label": "Temp Objeto (°C)",
+      "type": "slider",
+      "min": -40,
+      "max": 300,
+      "value": 36.5
+    }
+  ]
+}

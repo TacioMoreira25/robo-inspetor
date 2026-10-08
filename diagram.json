@@ -1,0 +1,150 @@
+{
+  "version": 1,
+  "author": "Robô Inspetor",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "board-esp32-devkit-c-v4",
+      "id": "esp",
+      "top": 120,
+      "left": 0,
+      "attrs": {}
+    },
+    {
+      "type": "chip-gy906",
+      "id": "gy906",
+      "top": -90,
+      "left": 40,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-led",
+      "id": "led_left_fwd",
+      "top": -20,
+      "left": -340,
+      "attrs": { "color": "green", "label": "Motor L Frente (IN1)" }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r_lf",
+      "top": -15,
+      "left": -230,
+      "attrs": { "value": "220" }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "led_left_rev",
+      "top": 100,
+      "left": -340,
+      "attrs": { "color": "yellow", "label": "Motor L Re (IN2)" }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r_lr",
+      "top": 105,
+      "left": -230,
+      "attrs": { "value": "220" }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "led_right_fwd",
+      "top": -20,
+      "left": 350,
+      "attrs": { "color": "green", "label": "Motor R Frente (IN3)" }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r_rf",
+      "top": -15,
+      "left": 230,
+      "attrs": { "value": "220" }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "led_right_rev",
+      "top": 100,
+      "left": 350,
+      "attrs": { "color": "yellow", "label": "Motor R Re (IN4)" }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r_rr",
+      "top": 105,
+      "left": 230,
+      "attrs": { "value": "220" }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "led_farol",
+      "top": 210,
+      "left": 350,
+      "attrs": { "color": "white", "label": "Farois 12V (D4184)" }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r_farol",
+      "top": 215,
+      "left": 230,
+      "attrs": { "value": "220" }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "led_alerta",
+      "top": 310,
+      "left": 350,
+      "attrs": { "color": "red", "label": "Alerta Termico (50C)" }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r_alerta",
+      "top": 315,
+      "left": 230,
+      "attrs": { "value": "220" }
+    },
+    {
+      "type": "wokwi-buzzer",
+      "id": "buzzer",
+      "top": 410,
+      "left": 340,
+      "attrs": { "hasVolume": "1", "label": "Buzzer de Alarme (70C)" }
+    }
+  ],
+  "connections": [
+    [ "esp:TX", "$serialMonitor:RX", "", [] ],
+    [ "esp:RX", "$serialMonitor:TX", "", [] ],
+    [ "esp:3V3", "gy906:VIN", "red", [ "v-30", "h-20" ] ],
+    [ "esp:GND.1", "gy906:GND", "black", [ "v-40", "h-40" ] ],
+    [ "esp:21", "gy906:SDA", "green", [ "v-20" ] ],
+    [ "esp:22", "gy906:SCL", "blue", [ "v-20" ] ],
+
+    [ "esp:27", "r_lf:2", "orange", [ "v0", "h-60" ] ],
+    [ "r_lf:1", "led_left_fwd:A", "orange", [ "v0" ] ],
+    [ "led_left_fwd:C", "esp:GND.1", "black", [ "v30", "h180" ] ],
+
+    [ "esp:26", "r_lr:2", "orange", [ "v0", "h-60" ] ],
+    [ "r_lr:1", "led_left_rev:A", "orange", [ "v0" ] ],
+    [ "led_left_rev:C", "esp:GND.1", "black", [ "v-30", "h180" ] ],
+
+    [ "esp:25", "r_rf:1", "orange", [ "v0", "h60" ] ],
+    [ "r_rf:2", "led_right_fwd:A", "orange", [ "v0" ] ],
+    [ "led_right_fwd:C", "esp:GND.2", "black", [ "v30", "h-180" ] ],
+
+    [ "esp:33", "r_rr:1", "orange", [ "v0", "h60" ] ],
+    [ "r_rr:2", "led_right_rev:A", "orange", [ "v0" ] ],
+    [ "led_right_rev:C", "esp:GND.2", "black", [ "v-30", "h-180" ] ],
+
+    [ "esp:4", "r_farol:1", "white", [ "v0", "h60" ] ],
+    [ "r_farol:2", "led_farol:A", "white", [ "v0" ] ],
+    [ "led_farol:C", "esp:GND.2", "black", [ "v-80", "h-180" ] ],
+
+    [ "esp:15", "r_alerta:1", "red", [ "v0", "h60" ] ],
+    [ "r_alerta:2", "led_alerta:A", "red", [ "v0" ] ],
+    [ "led_alerta:C", "esp:GND.2", "black", [ "v-140", "h-180" ] ],
+
+    [ "esp:13", "buzzer:2", "purple", [ "v0", "h120" ] ],
+    [ "buzzer:1", "esp:GND.2", "black", [ "v-200", "h-180" ] ]
+  ],
+  "dependencies": {
+    "chip-gy906": "chips/gy906"
+  }
+}

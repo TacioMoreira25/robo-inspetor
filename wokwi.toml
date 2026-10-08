@@ -1,0 +1,8 @@
+[wokwi]
+version = 1
+firmware = ".pio/build/wokwi/firmware.elf"
+elf = ".pio/build/wokwi/firmware.elf"
+
+[[chip]]
+name = "gy906"
+binary = "chips/gy906/gy906.wasm"
