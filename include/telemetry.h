@@ -12,6 +12,10 @@ struct RobotTelemetryState {
     int16_t target_left_speed;
     int16_t target_right_speed;
     ThermalData thermal;
+    float battery_voltage;
+    uint8_t battery_percentage;
+    bool battery_low_warning;
+    bool battery_critical_stop;
     bool watchdog_alert;
     int8_t wifi_rssi;
 };

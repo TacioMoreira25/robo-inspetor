@@ -35,6 +35,9 @@
     #define PIN_ALERT_BUZZER        13  // Transistor BC547 -> Buzzer Ativo 5V
     #define PIN_ALERT_LED           15  // LED Difuso Vermelho 5mm
 
+    // Monitoramento de Bateria (Lido pela ESP32 DevKit V1 / Co-processador na GPIO 34)
+    #define PIN_BATTERY_ADC         34
+
 #else // PLACA_ESP32_DEVKIT Padrão (Ambiente Simulado Wokwi / DevKit V1)
 
     // Barramento I2C Padrão por Hardware
@@ -56,7 +59,24 @@
     #define PIN_ALERT_BUZZER        13  // BC547 Buzzer
     #define PIN_ALERT_LED           15  // LED Alerta
 
+    // Divisor de Tensão Analógico da Bateria 3S (10 kOhm e 3,3 kOhm -> GPIO 34 ADC1_CH6)
+    #define PIN_BATTERY_ADC         34
+
 #endif
+
+// =============================================================================
+// PARÂMETROS DO MONITORAMENTO DE BATERIA 3S2P (DIVISOR 10k / 3.3k)
+// =============================================================================
+#define BATTERY_R1_OHMS             10000.0f // Resistor superior ligado ao +12V (Direct 3S)
+#define BATTERY_R2_OHMS             3300.0f  // Resistor inferior ligado ao GND
+#define BATTERY_DIVIDER_RATIO       ((BATTERY_R1_OHMS + BATTERY_R2_OHMS) / BATTERY_R2_OHMS) // ~4.0303
+#define BATTERY_ADC_VREF            3.30f    // Tensão de referência ADC da ESP32
+#define BATTERY_ADC_MAX             4095.0f  // Resolução ADC de 12 bits (0 a 4095)
+
+#define BATTERY_MAX_VOLTAGE         12.60f   // 100% de carga (4,20V por célula)
+#define BATTERY_NOMINAL_VOLTAGE     11.10f   // Tensão nominal de operação (3,70V por célula)
+#define BATTERY_WARN_VOLTAGE        10.50f   // Alerta preventivo de bateria fraca (3,50V/célula ~22%)
+#define BATTERY_CRIT_VOLTAGE         9.90f   // Corte crítico de tração para proteção das células (3,30V/célula 0%)
 
 // =============================================================================
 // PARÂMETROS DO BARRAMENTO I2C E SENSOR GY-906 (MLX90614)

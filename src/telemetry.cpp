@@ -44,6 +44,12 @@ static const char HTML_DASHBOARD[] PROGMEM = R"rawliteral(
             <p>Watchdog Status: <span id="wd" class="telemetry-val">OK</span></p>
         </div>
         <div class="card">
+            <h3>🔋 Energia (Bateria 3S2P)</h3>
+            <p>Tensão: <span id="bv" class="telemetry-val">--</span> V</p>
+            <p>Carga: <span id="bp" class="telemetry-val">--</span> %</p>
+            <p>Status BMS: <span id="bs" class="telemetry-val">NORMAL</span></p>
+        </div>
+        <div class="card">
             <h3>💡 Iluminação Frontal (MOSFET)</h3>
             <p>Faróis Olho de Águia (12V):</p>
             <input type="range" min="0" max="255" value="0" style="width:100%" oninput="fetch('/light?val='+this.value)">
@@ -65,6 +71,19 @@ static const char HTML_DASHBOARD[] PROGMEM = R"rawliteral(
             fetch('/status').then(r => r.json()).then(d => {
                 document.getElementById('ta').innerText = d.thermal.ambient.toFixed(1);
                 document.getElementById('to').innerText = d.thermal.object.toFixed(1);
+                document.getElementById('bv').innerText = d.battery.voltage.toFixed(2);
+                document.getElementById('bp').innerText = d.battery.percentage;
+                let bs = document.getElementById('bs');
+                if (d.battery.critical) {
+                    bs.innerText = "CORTE CRÍTICO (<9.9V)";
+                    bs.className = "telemetry-val alert";
+                } else if (d.battery.low_warning) {
+                    bs.innerText = "ALERTA BAIXA (<10.5V)";
+                    bs.className = "telemetry-val alert";
+                } else {
+                    bs.innerText = "OK (11.1V-12.6V)";
+                    bs.className = "telemetry-val";
+                }
                 let wd = document.getElementById('wd');
                 if (d.watchdog) {
                     wd.innerText = "FAILSAFE ATIVO";
@@ -159,7 +178,7 @@ void TelemetryServer::update(const RobotTelemetryState &state) {
 
     // Rota dinâmica de status JSON
     server.on("/status", HTTP_GET, [&state]() {
-        StaticJsonDocument<384> doc;
+        StaticJsonDocument<512> doc;
         doc["uptime"] = state.uptime_ms;
         doc["watchdog"] = state.watchdog_alert;
         doc["rssi"] = state.wifi_rssi;
@@ -173,6 +192,12 @@ void TelemetryServer::update(const RobotTelemetryState &state) {
         th["ambient"] = state.thermal.ambient_temperature;
         th["object"] = state.thermal.object_temperature;
 
+        JsonObject bat = doc.createNestedObject("battery");
+        bat["voltage"] = state.battery_voltage;
+        bat["percentage"] = state.battery_percentage;
+        bat["low_warning"] = state.battery_low_warning;
+        bat["critical"] = state.battery_critical_stop;
+
         String out;
         serializeJson(doc, out);
         server.send(200, "application/json", out);
@@ -180,7 +205,7 @@ void TelemetryServer::update(const RobotTelemetryState &state) {
 }
 
 void TelemetryServer::logSerialJson(const RobotTelemetryState &state) {
-    StaticJsonDocument<384> doc;
+    StaticJsonDocument<512> doc;
     doc["uptime_ms"] = state.uptime_ms;
     doc["watchdog"] = state.watchdog_alert;
     doc["rssi"] = state.wifi_rssi;
@@ -195,6 +220,12 @@ void TelemetryServer::logSerialJson(const RobotTelemetryState &state) {
     th["valid"] = state.thermal.is_valid;
     th["ambient_c"] = state.thermal.ambient_temperature;
     th["object_c"] = state.thermal.object_temperature;
+
+    JsonObject bat = doc.createNestedObject("battery");
+    bat["voltage_v"] = serialized(String(state.battery_voltage, 2));
+    bat["pct"] = state.battery_percentage;
+    bat["low_warn"] = state.battery_low_warning;
+    bat["crit_stop"] = state.battery_critical_stop;
 
     String jsonOutput;
     serializeJson(doc, jsonOutput);

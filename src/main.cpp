@@ -17,20 +17,46 @@ static TelemetryServer telemetryServer;
 // Variáveis de temporização não-bloqueante
 static uint32_t lastTelemetryMs = 0;
 static uint32_t lastThermalReadMs = 0;
+static uint32_t lastBatteryReadMs = 0;
 static uint32_t lastBuzzerToggleMs = 0;
 static bool buzzerState = false;
 
 static ThermalData currentThermalData = {0.0f, 0.0f, false, 0};
+static float currentBatteryVoltage = BATTERY_NOMINAL_VOLTAGE;
+static uint8_t currentBatteryPct = 100;
+static bool batteryLowWarning = false;
+static bool batteryCriticalStop = false;
 
 // Máquina de estados operacional
 enum class RobotOperationalState {
     BOOT_DIAGNOSTICS,
     NORMAL_OPERATION,
-    THERMAL_WARNING_PREVENTIVE, // >= 50 °C (Buzzer intermitente + LED)
-    THERMAL_EMERGENCY_STOP      // >= 70 °C (Parada crítica total)
+    THERMAL_WARNING_PREVENTIVE, // >= 50 °C ou Bateria < 10.5V (Buzzer intermitente + LED)
+    THERMAL_EMERGENCY_STOP      // >= 70 °C ou Bateria < 9.9V (Parada crítica total)
 };
 
 static RobotOperationalState currentState = RobotOperationalState::BOOT_DIAGNOSTICS;
+
+// =============================================================================
+// LEITURA DO DIVISOR DE TENSÃO DA BATERIA 3S2P (10 kOhm / 3.3 kOhm na GPIO 34)
+// =============================================================================
+void readBatteryStatus() {
+#if !defined(PLACA_ESP32_CAM) || MODO_SIMULACAO
+    uint16_t raw_adc = analogRead(PIN_BATTERY_ADC);
+    float v_pin = (raw_adc / BATTERY_ADC_MAX) * BATTERY_ADC_VREF;
+    currentBatteryVoltage = v_pin * BATTERY_DIVIDER_RATIO;
+#endif
+
+    // Cálculo linear de porcentagem entre 9.90V (0%) e 12.60V (100%)
+    float pct_f = ((currentBatteryVoltage - BATTERY_CRIT_VOLTAGE) /
+                   (BATTERY_MAX_VOLTAGE - BATTERY_CRIT_VOLTAGE)) * 100.0f;
+    if (pct_f > 100.0f) pct_f = 100.0f;
+    if (pct_f < 0.0f) pct_f = 0.0f;
+    currentBatteryPct = (uint8_t)pct_f;
+
+    batteryCriticalStop = (currentBatteryVoltage < BATTERY_CRIT_VOLTAGE);
+    batteryLowWarning = (!batteryCriticalStop && (currentBatteryVoltage < BATTERY_WARN_VOLTAGE));
+}
 
 // =============================================================================
 // ETAPA 1: BOOT E AUTODIAGNÓSTICO (SELF-TEST)
@@ -43,6 +69,17 @@ void runSelfTest() {
     pinMode(PIN_ALERT_LED, OUTPUT);
     digitalWrite(PIN_ALERT_BUZZER, LOW);
     digitalWrite(PIN_ALERT_LED, LOW);
+
+#if !defined(PLACA_ESP32_CAM) || MODO_SIMULACAO
+    pinMode(PIN_BATTERY_ADC, INPUT);
+    analogReadResolution(12);
+    readBatteryStatus();
+    Serial.print("[OK] Monitoramento ADC Bateria 3S2P na GPIO 34: ");
+    Serial.print(currentBatteryVoltage, 2);
+    Serial.print(" V (");
+    Serial.print(currentBatteryPct);
+    Serial.println("%).");
+#endif
 
     // Configuração do barramento I2C
     bool i2c_ok = thermalSensor.begin(PIN_I2C_SDA, PIN_I2C_SCL, I2C_FREQUENCY_HZ);
@@ -157,29 +194,37 @@ void loop() {
         motors.emergencyStop();
     }
 
-    // ETAPA 5: Varredura Térmica Contínua Não-Bloqueante (100 ms)
+    // ETAPA 5: Varredura Térmica e de Bateria Contínua Não-Bloqueante (100 ms)
     if ((now - lastThermalReadMs) >= SENSOR_READ_INTERVAL_MS) {
         lastThermalReadMs = now;
         currentThermalData = thermalSensor.read();
+        readBatteryStatus();
 
-        if (currentThermalData.is_valid) {
-            float temp_obj = currentThermalData.object_temperature;
+        bool thermal_crit = (currentThermalData.is_valid && currentThermalData.object_temperature >= ALERTA_TEMP_CRITICA_C);
+        bool thermal_warn = (currentThermalData.is_valid && currentThermalData.object_temperature >= ALERTA_TEMP_PREVENTIVO_C);
 
-            if (temp_obj >= ALERTA_TEMP_CRITICA_C) {
-                if (currentState != RobotOperationalState::THERMAL_EMERGENCY_STOP) {
-                    currentState = RobotOperationalState::THERMAL_EMERGENCY_STOP;
+        if (thermal_crit || batteryCriticalStop) {
+            if (currentState != RobotOperationalState::THERMAL_EMERGENCY_STOP) {
+                currentState = RobotOperationalState::THERMAL_EMERGENCY_STOP;
+                if (thermal_crit) {
                     Serial.println("[ALERTA CRITICO] 70°C ATINGIDOS! Parada de emergencia do UGV.");
-                    motors.emergencyStop();
+                } else {
+                    Serial.println("[ALERTA CRITICO] BATERIA < 9.9V! Corte de tracao para protecao das celulas 3S.");
                 }
-            } else if (temp_obj >= ALERTA_TEMP_PREVENTIVO_C) {
-                if (currentState != RobotOperationalState::THERMAL_WARNING_PREVENTIVE) {
-                    currentState = RobotOperationalState::THERMAL_WARNING_PREVENTIVE;
+                motors.emergencyStop();
+            }
+        } else if (thermal_warn || batteryLowWarning) {
+            if (currentState != RobotOperationalState::THERMAL_WARNING_PREVENTIVE) {
+                currentState = RobotOperationalState::THERMAL_WARNING_PREVENTIVE;
+                if (thermal_warn) {
                     Serial.println("[ALERTA PREVENTIVO] 50°C detectados no alvo.");
+                } else {
+                    Serial.println("[ALERTA PREVENTIVO] Bateria baixa (< 10.5V). Retornar o UGV.");
                 }
-            } else {
-                if (currentState != RobotOperationalState::NORMAL_OPERATION) {
-                    currentState = RobotOperationalState::NORMAL_OPERATION;
-                }
+            }
+        } else {
+            if (currentState != RobotOperationalState::NORMAL_OPERATION) {
+                currentState = RobotOperationalState::NORMAL_OPERATION;
             }
         }
     }
@@ -198,6 +243,10 @@ void loop() {
         telem.target_left_speed = motors.getTargetSpeedLeft();
         telem.target_right_speed = motors.getTargetSpeedRight();
         telem.thermal = currentThermalData;
+        telem.battery_voltage = currentBatteryVoltage;
+        telem.battery_percentage = currentBatteryPct;
+        telem.battery_low_warning = batteryLowWarning;
+        telem.battery_critical_stop = batteryCriticalStop;
         telem.watchdog_alert = motors.isWatchdogTriggered();
         telem.wifi_rssi = WiFi.RSSI();
 

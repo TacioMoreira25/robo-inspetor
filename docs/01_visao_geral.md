@@ -1,4 +1,4 @@
-# 01. Visão Geral da Arquitetura: Robô Inspetor Terrestre (UGV)
+# 01. Visão Geral da Arquitetura: Robô Inspetor Terrestre (UGV) V1.0
 
 O **Robô Inspetor Terrestre (UGV)** é uma plataforma móvel autônoma e teleoperada baseada em esteiras de borracha contínuas (derivadas de pneu MTB vulcanizado), projetada para inspeção visual e termográfica preditiva em ambientes industriais confinados (tubulações, galerias técnicas e subestações).
 
@@ -23,12 +23,13 @@ A arquitetura de potência do robô é dividida em três barramentos de tensão 
         v                                 v                                 v
 +-----------------------+     +-----------------------+     +-----------------------+
 |  BARRAMENTO DIRECT 3S |     |  STEP-DOWN BUCK LM2596|     |  STEP-UP BOOST 400W   |
-|   (11,1 V - 12,6 V)   |     |    (5,00 V Regula.)   |     |   (24,0 V Regulado)   |
+|   (11,1 V - 12,6 V)   |     |   (5,00 V Regulado)   |     |   (24,0 V Regulado)   |
 +-----------------------+     +-----------------------+     +-----------------------+
         |                                 |                                 |
-        +-- Fan Rise Mode 80mm            +-- ESP32-CAM                     +-- Driver L298N
-        +-- Faróis Olho de Águia          +-- ESP32 DevKit V1                   (Potência VMS)
-        +-- MOSFET D4184 (Potência)       +-- Buzzer / LED (5V)
+        +-- Faróis Olho de Águia          +-- ESP32-CAM                     +-- Driver L298N
+        +-- MOSFET D4184 (Potência)       +-- ESP32 DevKit V1                   (Potência VMS)
+        +-- Voltímetro LED DC             +-- Cooler 80mm (DF0922505SEL)
+        +-- Divisor ADC (10k / 3,3k)      +-- Buzzer / LED (5V)
                                           +-- L298N (Lógica 5V)
 ```
 
@@ -40,10 +41,11 @@ A arquitetura de potência do robô é dividida em três barramentos de tensão 
    - Fornece tensão e torque nominais aos **2x motorredutores JGB37-520 (24V / 107 RPM)**.
 2. **Linha Lógica Regulada (5,00 V Estabilizado):**
    - Rebaixada por módulo conversor **Step-Down Buck LM2596**, ajustado em **5,00 V ± 0,02 V**.
-   - Alimenta os módulos de processamento ESP32-CAM e ESP32 DevKit V1, os circuitos lógicos de 5V da Ponte H L298N e o circuito sonoro/visual de alerta (Buzzer/LED).
+   - Alimenta os módulos de processamento **ESP32-CAM** e **ESP32 DevKit V1**, o **Cooler Fan de 80 mm (`DF0922505SEL` - 5,00 V DC / 0,09 A / 0,45 W)** em paralelo, os circuitos lógicos de 5V da Ponte H L298N e o circuito sonoro/visual de alerta (Buzzer/LED).
+   - *Nota Crítica de Hardware:* O cooler real especificado (`DF0922505SEL`) opera em **5,00 V DC** e jamais deve ser ligado ao barramento de 12V da bateria sob risco de queima imediata do motor brushless.
 3. **Barramento Auxiliar 12V Direto (11,1 V – 12,6 V Não-Regulado):**
    - Conectado diretamente à saída pós-chave/fusível da bateria.
-   - Alimenta periféricos com tolerância ampla a 12V: Cooler Fan de 80 mm (Rise Mode), os 2x Faróis LED Olho de Águia e a entrada de potência do módulo MOSFET D4184.
+   - Alimenta os **2x Faróis LED Olho de Águia** (chaveados pelo módulo MOSFET D4184), o Voltímetro Digital LED de painel e o **Divisor de Tensão Analógico ($10\text{ k}\Omega$ e $3,3\text{ k}\Omega$)** conectado à porta ADC `GPIO 34` da ESP32 DevKit V1 para leitura de carga da bateria.
 
 ---
 
@@ -57,12 +59,11 @@ A elevação de tensão (Step-Up Boost de 11,1V–12,6V para 24,0V) impõe maior
    $$P_{in} = \frac{72,0\text{ W}}{0,85} \approx 84,7\text{ W}$$
 3. **Corrente Demandada da Bateria:** No pior caso operacional (bateria no patamar inferior de 11,1 V):
    $$I_{boost} = \frac{84,7\text{ W}}{11,1\text{ V}} \approx 7,63\text{ A}$$
-4. **Cargas Auxiliares:**
-   - Cooler Fan 80 mm: $0,20\text{ A}$
-   - Faróis LED Olho de Águia: $0,50\text{ A}$
-   - Linha Lógica 5V (ESP32-CAM + sensores): $\approx 0,30\text{ A}$ equivalente no primário.
-   - **Corrente Total Contínua no Primário:** $\approx 8,63\text{ A}$.
-5. **Margem de Segurança do BMS:** O pack possui BMS 3S com limite contínuo de **10,0 A** e fusível geral de **15 A**. A demanda de 8,63 A opera com **13,7% de margem de segurança** abaixo do corte da BMS, eliminando desarmes térmicos espúrios em campo.
+4. **Cargas Auxiliares e Linha Lógica:**
+   - Faróis LED Olho de Águia (Direct 3S): $0,50\text{ A}$
+   - Linha Lógica 5V (ESP32-CAM + ESP32 DevKit V1 + Cooler 80mm 5V a $0,09\text{ A}$ + sensores): $\approx 0,34\text{ A}$ equivalente na entrada de 11,1V do Buck LM2596.
+   - **Corrente Total Contínua no Primário:** $\approx 8,47\text{ A}$.
+5. **Margem de Segurança do BMS:** O pack possui BMS 3S com limite contínuo de **10,0 A** e fusível lâmina de **15 A**. A demanda de 8,47 A opera com **15,3% de margem de segurança** abaixo do corte da BMS, eliminando desarmes térmicos espúrios em campo.
 
 ---
 
@@ -70,10 +71,10 @@ A elevação de tensão (Step-Up Boost de 11,1V–12,6V para 24,0V) impõe maior
 
 | Malha / Barramento | Tensão / Ripple Máx | Corrente Nominal / Máx | Dispositivos Associados |
 |---|---|---|---|
-| **Entrada Primária (Direct 3S)** | 11,1 V – 12,6 V / $\le 150\text{ mV}$ | 4,4 Ah / 10,0 A (BMS) / 15 A (Fusível) | Pack 3S2P, Chave KCD1-101, Voltímetro LED, Cooler 80mm, MOSFET D4184 (Faróis). |
-| **Linha Lógica Regulada** | 5,00 V (Buck) / $\le 30\text{ mV}$ | 2,0 A Nom. / 3,0 A Pico | LM2596, ESP32-CAM (5V), ESP32 DevKit, Buzzer 5V, Lógica L298N. |
+| **Entrada Primária (Direct 3S)** | 11,1 V – 12,6 V / $\le 150\text{ mV}$ | 4,4 Ah / 10,0 A (BMS) / 15 A (Fusível) | Pack 3S2P, Chave KCD1-101, Voltímetro LED, MOSFET D4184 (Faróis), Divisor ADC ($10\text{k}\Omega / 3,3\text{k}\Omega$). |
+| **Linha Lógica Regulada** | 5,00 V (Buck) / $\le 30\text{ mV}$ | 2,0 A Nom. / 3,0 A Pico | LM2596, ESP32-CAM (5V), ESP32 DevKit V1, Cooler 80mm (`DF0922505SEL` 5V), Buzzer 5V, Lógica L298N. |
 | **Linha de Potência Tração** | 24,0 V (Boost) / $\le 100\text{ mV}$ | 3,0 A Nom. / 15,0 A (Módulo) | Boost 400W, Pino VMS do L298N, 2x Motores JGB37-520 (24V). |
-| **Linha Auxiliar Sinalização** | 3,30 V (LDO ESP32) | 150 mA | Barramento I2C, Sensor Térmico MLX90614, Pull-ups de 4,7 kΩ. |
+| **Linha Auxiliar Sinalização** | 3,30 V (LDO ESP32) | 150 mA | Barramento I2C, Sensor Térmico MLX90614, Pull-ups de 4,7 kΩ, Entrada ADC GPIO 34. |
 
 ---
 

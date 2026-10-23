@@ -107,6 +107,13 @@
       "top": 410,
       "left": 340,
       "attrs": { "hasVolume": "1", "label": "Buzzer de Alarme (70C)" }
+    },
+    {
+      "type": "wokwi-potentiometer",
+      "id": "pot_bat",
+      "top": 240,
+      "left": -340,
+      "attrs": { "value": "3450", "label": "Divisor Bateria 3S (GPIO 34)" }
     }
   ],
   "connections": [
@@ -116,6 +123,10 @@
     [ "esp:GND.1", "gy906:GND", "black", [ "v-40", "h-40" ] ],
     [ "esp:21", "gy906:SDA", "green", [ "v-20" ] ],
     [ "esp:22", "gy906:SCL", "blue", [ "v-20" ] ],
+
+    [ "pot_bat:VCC", "esp:3V3", "red", [ "v-60", "h180" ] ],
+    [ "pot_bat:GND", "esp:GND.1", "black", [ "v40", "h180" ] ],
+    [ "pot_bat:SIG", "esp:34", "cyan", [ "v-20", "h180" ] ],
 
     [ "esp:27", "r_lf:2", "orange", [ "v0", "h-60" ] ],
     [ "r_lf:1", "led_left_fwd:A", "orange", [ "v0" ] ],
