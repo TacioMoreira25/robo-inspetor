@@ -15,21 +15,26 @@ enum class DriveDirection {
 class MotorController {
 public:
     MotorController();
-    
-    // Inicialização de GPIOs e configuração do gerador de PWM LEDC
+
+    // Inicialização dos 4 canais PWM LEDC nos pinos IN1..IN4 (GPIOs 26, 27, 14, 13)
     void begin();
 
-    // Atualização de sinais físicos (chamado ciclicamente para processar rampas de aceleração)
+    // Atualização cíclica de rampas de aceleração e verificação do Failsafe (1000 ms)
     void update();
 
-    // Comandos de movimento com rampa
+    // Controle direto das esteiras (-255 a +255 para cada lado)
     void setTargetSpeed(int16_t target_left, int16_t target_right);
+
+    // Cinemática diferencial por eixos X e Y do Joystick (-255 a +255)
+    void driveJoystick(int16_t x, int16_t y);
+
+    // Comandos discretos de direção (W, A, S, D)
     void drive(DriveDirection dir, uint8_t speed);
 
-    // Failsafe e parada imediata (ignora rampa, corta PWM instantaneamente)
+    // Parada imediata (corta PWM dos 4 canais instantaneamente)
     void emergencyStop();
 
-    // Notificação de recepção de pacote (alimenta o watchdog de comunicação)
+    // Alimentação do Watchdog Failsafe
     void resetWatchdog();
     bool isWatchdogTriggered() const;
 
@@ -50,5 +55,5 @@ private:
     bool _watchdog_active;
 
     int16_t computeRamp(int16_t current, int16_t target);
-    void applyHBridge(uint8_t pin_in_a, uint8_t pin_in_b, uint8_t pwm_channel, int16_t speed);
+    void applyHBridge4Pin(uint8_t ch_in_a, uint8_t ch_in_b, int16_t speed);
 };

@@ -71,15 +71,11 @@ bool CameraStream::begin() {
     config.xclk_freq_hz = 20000000;
     config.pixel_format = PIXFORMAT_JPEG;
 
-    if (psramFound()) {
-        config.frame_size = FRAMESIZE_VGA;
-        config.jpeg_quality = 12;
-        config.fb_count = 2;
-    } else {
-        config.frame_size = FRAMESIZE_QVGA;
-        config.jpeg_quality = 15;
-        config.fb_count = 1;
-    }
+    // Otimização Anti-Lag: QVGA (320x240) leve (~120 kbps) com descarte de frame atrasado
+    config.frame_size = FRAMESIZE_QVGA;
+    config.jpeg_quality = 15;
+    config.fb_count = psramFound() ? 2 : 1;
+    config.grab_mode = CAMERA_GRAB_LATEST;
 
     esp_err_t err = esp_camera_init(&config);
     if (err != ESP_OK) {

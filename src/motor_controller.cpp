@@ -16,11 +16,18 @@ void MotorController::begin() {
     pinMode(PIN_MOTOR_RIGHT_IN3, OUTPUT);
     pinMode(PIN_MOTOR_RIGHT_IN4, OUTPUT);
 
-    ledcSetup(PWM_CHANNEL_LEFT, PWM_FREQ_HZ, PWM_RESOLUTION_BITS);
-    ledcAttachPin(PIN_MOTOR_LEFT_PWM, PWM_CHANNEL_LEFT);
+    // Configuração dos 4 canais PWM independentes (Jumpers ENA/ENB fechados na L298N)
+    ledcSetup(PWM_CH_LEFT_IN1, PWM_FREQ_HZ, PWM_RESOLUTION_BITS);
+    ledcAttachPin(PIN_MOTOR_LEFT_IN1, PWM_CH_LEFT_IN1);
 
-    ledcSetup(PWM_CHANNEL_RIGHT, PWM_FREQ_HZ, PWM_RESOLUTION_BITS);
-    ledcAttachPin(PIN_MOTOR_RIGHT_PWM, PWM_CHANNEL_RIGHT);
+    ledcSetup(PWM_CH_LEFT_IN2, PWM_FREQ_HZ, PWM_RESOLUTION_BITS);
+    ledcAttachPin(PIN_MOTOR_LEFT_IN2, PWM_CH_LEFT_IN2);
+
+    ledcSetup(PWM_CH_RIGHT_IN3, PWM_FREQ_HZ, PWM_RESOLUTION_BITS);
+    ledcAttachPin(PIN_MOTOR_RIGHT_IN3, PWM_CH_RIGHT_IN3);
+
+    ledcSetup(PWM_CH_RIGHT_IN4, PWM_FREQ_HZ, PWM_RESOLUTION_BITS);
+    ledcAttachPin(PIN_MOTOR_RIGHT_IN4, PWM_CH_RIGHT_IN4);
 
     _last_heartbeat_ms = millis();
     emergencyStop();
@@ -46,10 +53,10 @@ int16_t MotorController::computeRamp(int16_t current, int16_t target) {
     return current;
 }
 
-void MotorController::applyHBridge(uint8_t pin_in_a, uint8_t pin_in_b, uint8_t pwm_channel, int16_t speed) {
+void MotorController::applyHBridge4Pin(uint8_t ch_in_a, uint8_t ch_in_b, int16_t speed) {
     speed = constrain(speed, -255, 255);
 
-    // Tratamento de zona morta para superar atrito mecânico das esteiras
+    // Compensação de zona morta para vencer o atrito estático das esteiras
     if (speed > 0 && speed < MOTOR_DEADBAND) {
         speed = MOTOR_DEADBAND;
     } else if (speed < 0 && speed > -MOTOR_DEADBAND) {
@@ -59,24 +66,21 @@ void MotorController::applyHBridge(uint8_t pin_in_a, uint8_t pin_in_b, uint8_t p
     uint8_t duty = (uint8_t)abs(speed);
 
     if (speed > 0) {
-        digitalWrite(pin_in_a, HIGH);
-        digitalWrite(pin_in_b, LOW);
+        ledcWrite(ch_in_a, duty);
+        ledcWrite(ch_in_b, 0);
     } else if (speed < 0) {
-        digitalWrite(pin_in_a, LOW);
-        digitalWrite(pin_in_b, HIGH);
+        ledcWrite(ch_in_a, 0);
+        ledcWrite(ch_in_b, duty);
     } else {
-        // Freio passivo / parada
-        digitalWrite(pin_in_a, LOW);
-        digitalWrite(pin_in_b, LOW);
+        ledcWrite(ch_in_a, 0);
+        ledcWrite(ch_in_b, 0);
     }
-
-    ledcWrite(pwm_channel, duty);
 }
 
 void MotorController::update() {
     uint32_t now = millis();
 
-    // 1. Verificação contínua do Failsafe (Watchdog de Comunicação)
+    // 1. Verificação contínua do Failsafe (1000 ms sem comando corta os motores)
     if ((now - _last_heartbeat_ms) > FAILSAFE_TIMEOUT_MS) {
         if (!_watchdog_active) {
             _watchdog_active = true;
@@ -91,12 +95,12 @@ void MotorController::update() {
 
         if (_current_left != _target_left) {
             _current_left = computeRamp(_current_left, _target_left);
-            applyHBridge(PIN_MOTOR_LEFT_IN1, PIN_MOTOR_LEFT_IN2, PWM_CHANNEL_LEFT, _current_left);
+            applyHBridge4Pin(PWM_CH_LEFT_IN1, PWM_CH_LEFT_IN2, _current_left);
         }
 
         if (_current_right != _target_right) {
             _current_right = computeRamp(_current_right, _target_right);
-            applyHBridge(PIN_MOTOR_RIGHT_IN3, PIN_MOTOR_RIGHT_IN4, PWM_CHANNEL_RIGHT, _current_right);
+            applyHBridge4Pin(PWM_CH_RIGHT_IN3, PWM_CH_RIGHT_IN4, _current_right);
         }
     }
 }
@@ -105,6 +109,13 @@ void MotorController::setTargetSpeed(int16_t target_left, int16_t target_right) 
     resetWatchdog();
     _target_left = constrain(target_left, -255, 255);
     _target_right = constrain(target_right, -255, 255);
+}
+
+void MotorController::driveJoystick(int16_t x, int16_t y) {
+    // Cinemática diferencial: Y controla avanço/recuo, X controla giro diferencial
+    int16_t left = constrain(y + x, -255, 255);
+    int16_t right = constrain(y - x, -255, 255);
+    setTargetSpeed(left, right);
 }
 
 void MotorController::drive(DriveDirection dir, uint8_t speed) {
@@ -141,11 +152,8 @@ void MotorController::emergencyStop() {
     _current_left = 0;
     _current_right = 0;
 
-    digitalWrite(PIN_MOTOR_LEFT_IN1, LOW);
-    digitalWrite(PIN_MOTOR_LEFT_IN2, LOW);
-    digitalWrite(PIN_MOTOR_RIGHT_IN3, LOW);
-    digitalWrite(PIN_MOTOR_RIGHT_IN4, LOW);
-
-    ledcWrite(PWM_CHANNEL_LEFT, 0);
-    ledcWrite(PWM_CHANNEL_RIGHT, 0);
+    ledcWrite(PWM_CH_LEFT_IN1, 0);
+    ledcWrite(PWM_CH_LEFT_IN2, 0);
+    ledcWrite(PWM_CH_RIGHT_IN3, 0);
+    ledcWrite(PWM_CH_RIGHT_IN4, 0);
 }

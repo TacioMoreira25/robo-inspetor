@@ -1,97 +1,106 @@
-# 01. Visão Geral da Arquitetura: Robô Inspetor Terrestre (UGV) V1.0
+# 01. Visão Geral e Distribuição de Energia (12V, 24V e 5V)
 
-O **Robô Inspetor Terrestre (UGV)** é uma plataforma móvel autônoma e teleoperada baseada em esteiras de borracha contínuas (derivadas de pneu MTB vulcanizado), projetada para inspeção visual e termográfica preditiva em ambientes industriais confinados (tubulações, galerias técnicas e subestações).
+Arquitetura elétrica e divisão de processamento do **Robô Inspetor Terrestre (UGV)**:
+- **ESP32 DevKit V1 (Master — IP `192.168.4.1`):** Cria o Wi-Fi próprio do robô (`ROBO_INSPETOR_UGV`, senha `12345678`) e controla o Painel Web, Ponte H L298N (motores), Módulo MOSFET (faróis) e Sensor Térmico MLX90614.
+- **ESP32-CAM (Slave — IP `192.168.4.2`):** Conecta no Wi-Fi da Master e fica 100% dedicada ao streaming de vídeo MJPEG na porta `81` (`http://192.168.4.2:81/stream`).
 
 ---
 
-## 1. Topologia Elétrica Trifurcada e Distribuição de Potência
+## 1. Diagrama de Energia e Potência (12V, 24V, 5V e GND)
 
-A arquitetura de potência do robô é dividida em três barramentos de tensão distintos a partir de uma fonte de energia primária recarregável única (Pack 3S2P Li-Ion):
+```mermaid
+flowchart LR
+    BAT["Bateria Lítio 3S2P (XT60)<br/>11.1V a 12.6V"]
+    KCD["Chave Gangorra KCD1"]
+    FUS["Porta-Fusível 15A"]
+    CHICOTE["Chicote Principal em Y<br/>(12V Pós-Chave)"]
+    MINI12["Mini Chicote 12V"]
 
+    STEPUP["Step-Up 400W<br/>(Saída 24V)"]
+    STEPDOWN["Step-Down LM2596<br/>(Saída 5V)"]
+    MOSFET["Módulo MOSFET Duplo<br/>(VCC / V+)"]
+    VOLT["Voltímetro Digital 3 Fios<br/>(Fios Vermelho + Branco juntos)"]
+    COOLER["Cooler 80mm (12V)<br/>(Fio Amarelo isolado)"]
+    FAROIS["2x Faróis Olho de Águia (12V)"]
+
+    L298N_24["Ponte H L298N<br/>Borne 12V/VCC (Potência)"]
+    MOTORES["2x Motores JGB37-520 (24V)<br/>(OUT1/OUT2 e OUT3/OUT4)"]
+
+    PROTO5V["Barramento (+) Protoboard (5V)<br/>+ Capacitor Eletrolítico"]
+    DEVKIT["ESP32 DevKit V1 (Master)<br/>Pino VIN / 5V"]
+    CAM["ESP32-CAM (Slave)<br/>Pino 5V"]
+    L298N_5V["Ponte H L298N<br/>Borne 5V Lógica (Sem Jumper)"]
+
+    BAT -->|"Fio Vermelho (+)"| KCD --> FUS --> CHICOTE
+
+    CHICOTE -->|"1. IN+ (12V)"| STEPUP
+    CHICOTE -->|"2. IN+ (12V)"| STEPDOWN
+    CHICOTE -->|"3. V+ (12V)"| MOSFET
+    CHICOTE -->|"4. Vermelho + Branco"| VOLT
+    CHICOTE -->|"5. Linha 12V"| MINI12
+
+    MINI12 -->|"Positivo (+)"| COOLER
+    MINI12 -->|"Positivo (+)"| FAROIS
+    MOSFET -->|"OUT- (Chaveado)"| FAROIS
+
+    STEPUP -->|"OUT+ (24V)"| L298N_24 --> MOTORES
+
+    STEPDOWN -->|"OUT+ (5V)"| PROTO5V
+    PROTO5V --> DEVKIT
+    PROTO5V --> CAM
+    PROTO5V --> L298N_5V
 ```
-+-----------------------------------------------------------------------------------+
-|                            PACK BATERIA 3S2P Li-Ion                               |
-|                     (11,1 V Nominal / 12,6 V Pico / 4400 mAh)                     |
-+-----------------------------------------------------------------------------------+
-                                          |
-                                 [ Fusível Lâmina 15A ]
-                                          |
-                                 [ Chave Geral KCD1-101 ]
-                                          |
-        +---------------------------------+---------------------------------+
-        |                                 |                                 |
-        v                                 v                                 v
-+-----------------------+     +-----------------------+     +-----------------------+
-|  BARRAMENTO DIRECT 3S |     |  STEP-DOWN BUCK LM2596|     |  STEP-UP BOOST 400W   |
-|   (11,1 V - 12,6 V)   |     |   (5,00 V Regulado)   |     |   (24,0 V Regulado)   |
-+-----------------------+     +-----------------------+     +-----------------------+
-        |                                 |                                 |
-        +-- Faróis Olho de Águia          +-- ESP32-CAM                     +-- Driver L298N
-        +-- MOSFET D4184 (Potência)       +-- ESP32 DevKit V1                   (Potência VMS)
-        +-- Voltímetro LED DC             +-- Cooler 80mm (DF0922505SEL)
-        +-- Divisor ADC (10k / 3,3k)      +-- Buzzer / LED (5V)
-                                          +-- L298N (Lógica 5V)
+
+### Diagrama do Barramento de Terra (GND Comum — 0V)
+
+```mermaid
+flowchart LR
+    BAT_GND["Bateria 3S2P (XT60)<br/>Fio Preto (-)"]
+    PROTO_GND["Barramento Azul (-) da Protoboard<br/>(GND Comum 0V)"]
+
+    BAT_GND --> PROTO_GND
+    PROTO_GND --- G1["IN- do Step-Up 400W"]
+    PROTO_GND --- G2["IN- e OUT- do Step-Down LM2596"]
+    PROTO_GND --- G3["GND de Entrada e GND Lógico do Módulo MOSFET"]
+    PROTO_GND --- G4["Fio Preto do Voltímetro Digital"]
+    PROTO_GND --- G5["Fio Preto do Cooler 80mm (12V)"]
+    PROTO_GND --- G6["Borne GND da Ponte H L298N (junto ao OUT- do Step-Up)"]
+    PROTO_GND --- G7["GND da ESP32 DevKit V1, ESP32-CAM e MLX90614"]
 ```
 
-### 1.1 Detalhamento dos Três Barramentos
-
-1. **Linha de Potência de Tração (24,0 V Regulado):**
-   - Elevada e estabilizada por um módulo conversor **Step-Up Boost de 400W / 15A**.
-   - O trimpot é travado em **24,0 V** para alimentar o pino de potência `VMS` da Ponte H L298N.
-   - Fornece tensão e torque nominais aos **2x motorredutores JGB37-520 (24V / 107 RPM)**.
-2. **Linha Lógica Regulada (5,00 V Estabilizado):**
-   - Rebaixada por módulo conversor **Step-Down Buck LM2596**, ajustado em **5,00 V ± 0,02 V**.
-   - Alimenta os módulos de processamento **ESP32-CAM** e **ESP32 DevKit V1**, o **Cooler Fan de 80 mm (`DF0922505SEL` - 5,00 V DC / 0,09 A / 0,45 W)** em paralelo, os circuitos lógicos de 5V da Ponte H L298N e o circuito sonoro/visual de alerta (Buzzer/LED).
-   - *Nota Crítica de Hardware:* O cooler real especificado (`DF0922505SEL`) opera em **5,00 V DC** e jamais deve ser ligado ao barramento de 12V da bateria sob risco de queima imediata do motor brushless.
-3. **Barramento Auxiliar 12V Direto (11,1 V – 12,6 V Não-Regulado):**
-   - Conectado diretamente à saída pós-chave/fusível da bateria.
-   - Alimenta os **2x Faróis LED Olho de Águia** (chaveados pelo módulo MOSFET D4184), o Voltímetro Digital LED de painel e o **Divisor de Tensão Analógico ($10\text{ k}\Omega$ e $3,3\text{ k}\Omega$)** conectado à porta ADC `GPIO 34` da ESP32 DevKit V1 para leitura de carga da bateria.
-
 ---
 
-## 2. Balanço de Potência e Margem Térmica do BMS 3S
+## 2. Passo a Passo da Distribuição Elétrica
 
-A elevação de tensão (Step-Up Boost de 11,1V–12,6V para 24,0V) impõe maior demanda de corrente no barramento primário ($P_{in} = \frac{P_{out}}{\eta}$):
+### Passo 1 — Linha de Entrada e Proteção (12V Pós-Chave)
+1. Ligue o fio **Positivo (Vermelho)** do conector **XT60** na **Chave Gangorra KCD1** e, na saída dela, instale o **Porta-Fusível de 15A**.
+2. Abra a saída do fusível no **Chicote Principal em Y (12V)** e conecte nas 5 pontas:
+   - **Ponta 1:** Borne **`IN+`** do Conversor **Step-Up 400W**.
+   - **Ponta 2:** Borne **`IN+`** do Conversor **Step-Down LM2596**.
+   - **Ponta 3:** Borne **`VCC` (`V+`)** de entrada do **Módulo MOSFET Duplo**.
+   - **Ponta 4:** **Fios Vermelho + Branco** (soldados juntos) do **Voltímetro Digital de 3 Fios**.
+   - **Ponta 5 (Mini Chicote 12V):** Fio positivo (vermelho) do **Cooler de 80mm (12V)** + fios positivos (vermelhos) dos dois **Faróis Olho de Águia (12V)**.
 
-1. **Potência de Saída dos Motores:** Em regime severo ou partida em rampa, os dois motores JGB37-520 demandam até 3,0 A combinados em 24,0 V:
-   $$P_{out} = 24,0\text{ V} \times 3,0\text{ A} = 72,0\text{ W}$$
-2. **Potência de Entrada no Boost:** Com eficiência típica de conversão $\eta \approx 85\%$:
-   $$P_{in} = \frac{72,0\text{ W}}{0,85} \approx 84,7\text{ W}$$
-3. **Corrente Demandada da Bateria:** No pior caso operacional (bateria no patamar inferior de 11,1 V):
-   $$I_{boost} = \frac{84,7\text{ W}}{11,1\text{ V}} \approx 7,63\text{ A}$$
-4. **Cargas Auxiliares e Linha Lógica:**
-   - Faróis LED Olho de Águia (Direct 3S): $0,50\text{ A}$
-   - Linha Lógica 5V (ESP32-CAM + ESP32 DevKit V1 + Cooler 80mm 5V a $0,09\text{ A}$ + sensores): $\approx 0,34\text{ A}$ equivalente na entrada de 11,1V do Buck LM2596.
-   - **Corrente Total Contínua no Primário:** $\approx 8,47\text{ A}$.
-5. **Margem de Segurança do BMS:** O pack possui BMS 3S com limite contínuo de **10,0 A** e fusível lâmina de **15 A**. A demanda de 8,47 A opera com **15,3% de margem de segurança** abaixo do corte da BMS, eliminando desarmes térmicos espúrios em campo.
+### Passo 2 — Barramento de Terra (GND Comum — 0V)
+1. Ligue o fio **Negativo (Preto)** do conector **XT60** no barramento azul/negativo (`-`) da protoboard.
+2. Interligue nesse mesmo barramento o terra de todos os módulos:
+   - **`IN-`** do Step-Up 400W e **`IN-`** do Step-Down LM2596.
+   - **`GND` de entrada** e **`GND` lógico** do Módulo MOSFET.
+   - **Fio Preto** do Voltímetro Digital.
+   - **Fio Preto** do Cooler de 80mm *(isole o terceiro fio amarelo de tacômetro)*.
+   - **`GND`** da Ponte H L298N.
+   - **`GND`** da ESP32 DevKit V1, da ESP32-CAM e do sensor MLX90614.
 
----
+### Passo 3 — Linha de 24V (Motores — Saída do Step-Up 400W)
+1. Ajuste o trimpot do Step-Up 400W para **24,0 V** antes de ligar na Ponte H.
+2. Conecte **`OUT+ (24V)`** no borne **`12V/VCC`** da **Ponte H L298N**.
+3. Conecte **`OUT-`** no borne **`GND`** da **Ponte H L298N**.
+4. Ligue os **Motores JGB37-520 (24V)** nos bornes laterais **`OUT1`/`OUT2`** (Esquerdo) e **`OUT3`/`OUT4`** (Direito) da L298N.
 
-## 3. Resumo de Malhas e Tensões
-
-| Malha / Barramento | Tensão / Ripple Máx | Corrente Nominal / Máx | Dispositivos Associados |
-|---|---|---|---|
-| **Entrada Primária (Direct 3S)** | 11,1 V – 12,6 V / $\le 150\text{ mV}$ | 4,4 Ah / 10,0 A (BMS) / 15 A (Fusível) | Pack 3S2P, Chave KCD1-101, Voltímetro LED, MOSFET D4184 (Faróis), Divisor ADC ($10\text{k}\Omega / 3,3\text{k}\Omega$). |
-| **Linha Lógica Regulada** | 5,00 V (Buck) / $\le 30\text{ mV}$ | 2,0 A Nom. / 3,0 A Pico | LM2596, ESP32-CAM (5V), ESP32 DevKit V1, Cooler 80mm (`DF0922505SEL` 5V), Buzzer 5V, Lógica L298N. |
-| **Linha de Potência Tração** | 24,0 V (Boost) / $\le 100\text{ mV}$ | 3,0 A Nom. / 15,0 A (Módulo) | Boost 400W, Pino VMS do L298N, 2x Motores JGB37-520 (24V). |
-| **Linha Auxiliar Sinalização** | 3,30 V (LDO ESP32) | 150 mA | Barramento I2C, Sensor Térmico MLX90614, Pull-ups de 4,7 kΩ, Entrada ADC GPIO 34. |
-
----
-
-## 4. Dinâmica de Tração e Queda de Tensão no Driver L298N
-
-O driver L298N utiliza transistores bipolares de junção (BJT Darlington), apresentando uma queda interna de saturação ($V_{CE(sat)}$) de 1,0 V a 1,5 V por transistor. Como dois transistores conduzem simultaneamente por motor:
-- **Queda de Tensão Total no Driver:** $V_{drop} \approx 2,0\text{ V a } 3,0\text{ V}$.
-- **Tensão Efetiva nos Motores:** $V_{efetiva} = 24,0\text{ V} - 2,5\text{ V} \approx 21,5\text{ V}$.
-- **Ajuste de Rotação:** Os motores de 107 RPM nominais operam a aproximadamente $93\text{ RPM a } 98\text{ RPM}$ em plena carga, proporcionando excelente estabilidade mecânica e elevado torque de rampa em baixas velocidades.
-
----
-
-## 5. Estrutura Mecânica e CAD em PETG
-
-- **Chassi Monobloco:** $240 \times 160 \times 75\text{ mm}$ impresso em PETG (espessura de parede 2,5 mm, 100% de infill nos suportes de eixo e motores).
-  - 2x furos traseiros de $\varnothing 12,0\text{ mm}$ para acoplamento dos flanges de alumínio de 6 mm aos eixos D dos motores.
-  - 2x furos centrais fixos de $\varnothing 8,2\text{ mm}$ para eixos mortos M8.
-  - 2x rasgos oblongos dianteiros de $25 \times 8,2\text{ mm}$ dispostos horizontalmente como esticadores das esteiras.
-- **Carenagem Superior:** Placa em PETG de $240 \times 160 \times 3,0\text{ mm}$ com canal rebaixado de $3,0 \times 2,0\text{ mm}$ para gaxeta de silicone (vedação IP65) e recorte de $\varnothing 75\text{ mm}$ para o Cooler de 80 mm.
-- **Conjunto de Rodagem:** 2x polias motrizes traseiras de $\varnothing 60\text{ mm}$, 4x polias livres de $\varnothing 50\text{ mm}$ (alojando 8x rolamentos blindados 608-ZZ) e 2x esteiras de pneu MTB vulcanizado ($35\text{ a }40\text{ mm}$ de largura).
+### Passo 4 — Linha de 5V (Lógica — Saída do Step-Down LM2596)
+1. Ajuste o trimpot do Step-Down LM2596 para **5,00 V** antes de alimentar as placas.
+2. Conecte **`OUT+ (5V)`** no barramento positivo (`+`) da protoboard (com capacitor eletrolítico de filtro no trilho).
+3. Distribua os 5V da protoboard para:
+   - Pino **`VIN` / `5V`** da **ESP32 DevKit V1**.
+   - Pino **`5V`** da **ESP32-CAM**.
+   - Borne **`5V` (Lógica)** da **Ponte H L298N** *(remova obrigatoriamente o jumper regulador de 5V da placa L298N)*.

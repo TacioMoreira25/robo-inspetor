@@ -7,168 +7,113 @@
 #include "telemetry.h"
 
 // =============================================================================
-// INSTÂNCIAS DE SUBSISTEMAS DO ROBÔ
+// COMPILAÇÃO CONDICIONAL: SLAVE (ESP32-CAM) vs MASTER (ESP32 DEVKIT V1)
 // =============================================================================
-static MotorController motors;
-static ThermalSensor thermalSensor(MLX90614_DEFAULT_ADDR);
-static CameraStream camera;
-static TelemetryServer telemetryServer;
+#if defined(PLACA_ESP32_CAM) && !MODO_SIMULACAO
 
-// Variáveis de temporização não-bloqueante
-static uint32_t lastTelemetryMs = 0;
-static uint32_t lastThermalReadMs = 0;
-static uint32_t lastBatteryReadMs = 0;
-static uint32_t lastBuzzerToggleMs = 0;
-static bool buzzerState = false;
+// -----------------------------------------------------------------------------
+// MODO SLAVE (ESP32-CAM - IP 192.168.1.101): Dedicada 100% ao Stream MJPEG (:81)
+// -----------------------------------------------------------------------------
+static CameraStream slaveCamera;
+static TelemetryServer slaveStreamServer;
 
-static ThermalData currentThermalData = {0.0f, 0.0f, false, 0};
-static float currentBatteryVoltage = BATTERY_NOMINAL_VOLTAGE;
-static uint8_t currentBatteryPct = 100;
-static bool batteryLowWarning = false;
-static bool batteryCriticalStop = false;
-
-// Máquina de estados operacional
-enum class RobotOperationalState {
-    BOOT_DIAGNOSTICS,
-    NORMAL_OPERATION,
-    THERMAL_WARNING_PREVENTIVE, // >= 50 °C ou Bateria < 10.5V (Buzzer intermitente + LED)
-    THERMAL_EMERGENCY_STOP      // >= 70 °C ou Bateria < 9.9V (Parada crítica total)
-};
-
-static RobotOperationalState currentState = RobotOperationalState::BOOT_DIAGNOSTICS;
-
-// =============================================================================
-// LEITURA DO DIVISOR DE TENSÃO DA BATERIA 3S2P (10 kOhm / 3.3 kOhm na GPIO 34)
-// =============================================================================
-void readBatteryStatus() {
-#if !defined(PLACA_ESP32_CAM) || MODO_SIMULACAO
-    uint16_t raw_adc = analogRead(PIN_BATTERY_ADC);
-    float v_pin = (raw_adc / BATTERY_ADC_MAX) * BATTERY_ADC_VREF;
-    currentBatteryVoltage = v_pin * BATTERY_DIVIDER_RATIO;
-#endif
-
-    // Cálculo linear de porcentagem entre 9.90V (0%) e 12.60V (100%)
-    float pct_f = ((currentBatteryVoltage - BATTERY_CRIT_VOLTAGE) /
-                   (BATTERY_MAX_VOLTAGE - BATTERY_CRIT_VOLTAGE)) * 100.0f;
-    if (pct_f > 100.0f) pct_f = 100.0f;
-    if (pct_f < 0.0f) pct_f = 0.0f;
-    currentBatteryPct = (uint8_t)pct_f;
-
-    batteryCriticalStop = (currentBatteryVoltage < BATTERY_CRIT_VOLTAGE);
-    batteryLowWarning = (!batteryCriticalStop && (currentBatteryVoltage < BATTERY_WARN_VOLTAGE));
-}
-
-// =============================================================================
-// ETAPA 1: BOOT E AUTODIAGNÓSTICO (SELF-TEST)
-// =============================================================================
-void runSelfTest() {
-    Serial.println("\n[SISTEMA] Iniciando Autodiagnostico de Hardware...");
-
-    // Inicialização das portas de alerta local (Buzzer e LED)
-    pinMode(PIN_ALERT_BUZZER, OUTPUT);
-    pinMode(PIN_ALERT_LED, OUTPUT);
-    digitalWrite(PIN_ALERT_BUZZER, LOW);
-    digitalWrite(PIN_ALERT_LED, LOW);
-
-#if !defined(PLACA_ESP32_CAM) || MODO_SIMULACAO
-    pinMode(PIN_BATTERY_ADC, INPUT);
-    analogReadResolution(12);
-    readBatteryStatus();
-    Serial.print("[OK] Monitoramento ADC Bateria 3S2P na GPIO 34: ");
-    Serial.print(currentBatteryVoltage, 2);
-    Serial.print(" V (");
-    Serial.print(currentBatteryPct);
-    Serial.println("%).");
-#endif
-
-    // Configuração do barramento I2C
-    bool i2c_ok = thermalSensor.begin(PIN_I2C_SDA, PIN_I2C_SCL, I2C_FREQUENCY_HZ);
-    if (!i2c_ok) {
-        Serial.println("[FALHA] Sensor Termico MLX90614 nao respondeu no endereco 0x5A!");
-    } else {
-        Serial.println("[OK] Barramento I2C e sensor MLX90614 (GY-906) prontos.");
-    }
-
-    // Inicialização da Câmera
-    bool cam_ok = camera.begin();
-    if (!cam_ok) {
-        Serial.println("[AVISO] Modulo de camera indisponivel (operando em modo alternativo).");
-    } else {
-        Serial.println("[OK] Modulo de visao e streaming de video prontos.");
-    }
-
-    // Inicialização da Tração
-    motors.begin();
-    Serial.println("[OK] Tração L298N configurada (PWM otimizado em 1500 Hz).");
-
-    // Inicialização do Canal PWM dos Faróis (MOSFET D4184 na GPIO 4)
-    ledcSetup(PWM_CHANNEL_HEADLIGHT, PWM_FREQ_HZ, PWM_RESOLUTION_BITS);
-    ledcAttachPin(PIN_HEADLIGHT_PWM, PWM_CHANNEL_HEADLIGHT);
-    ledcWrite(PWM_CHANNEL_HEADLIGHT, 0);
-    Serial.println("[OK] Faróis LED (MOSFET D4184 na GPIO 4) prontos.");
-
-    currentState = RobotOperationalState::NORMAL_OPERATION;
-}
-
-// =============================================================================
-// CONTROLE DE SINALIZAÇÃO LOCAL DE ALERTA
-// =============================================================================
-void updateAlertSignaling(uint32_t now) {
-    if (currentState == RobotOperationalState::THERMAL_WARNING_PREVENTIVE) {
-        digitalWrite(PIN_ALERT_LED, HIGH);
-        
-        // Buzzer intermitente a cada 250 ms
-        if (now - lastBuzzerToggleMs >= 250) {
-            lastBuzzerToggleMs = now;
-            buzzerState = !buzzerState;
-            digitalWrite(PIN_ALERT_BUZZER, buzzerState ? HIGH : LOW);
-        }
-    } else if (currentState == RobotOperationalState::THERMAL_EMERGENCY_STOP) {
-        // Alarme contínuo de parada crítica
-        digitalWrite(PIN_ALERT_LED, HIGH);
-        digitalWrite(PIN_ALERT_BUZZER, HIGH);
-    } else {
-        // Normal
-        digitalWrite(PIN_ALERT_LED, LOW);
-        digitalWrite(PIN_ALERT_BUZZER, LOW);
-    }
-}
-
-// =============================================================================
-// SETUP DO FIRMWARE
-// =============================================================================
 void setup() {
     Serial.begin(SERIAL_BAUD_RATE);
     delay(200);
 
     Serial.println("==================================================");
-    Serial.println("  ROBO DE INSPECAO CONFINADA (UGV) - ESP32-CAM    ");
-    Serial.println("    Firmware Unico com Camada de Abstracao HAL    ");
+    Serial.println("  ROBO INSPETOR (UGV) - ESP32-CAM SLAVE (VIDEO)   ");
+    Serial.println("  Pinos 12, 13, 14, 15 livres - Dedicada ao Stream");
     Serial.println("==================================================");
 
-    // Executa diagnóstico inicial
-    runSelfTest();
+    if (!slaveCamera.begin()) {
+        Serial.println("[FALHA] Erro ao inicializar camera OV2640!");
+    } else {
+        Serial.println("[OK] Camera OV2640 inicializada.");
+    }
 
-    // ETAPA 2: Inicialização de Rede e Servidores Web/Stream
-    telemetryServer.begin(&motors, &camera);
-    Serial.println("[REDE] SoftAP (ROBO_INSPETOR_UGV) e Servidores HTTP ativos.");
+    slaveStreamServer.beginSlaveCam(&slaveCamera);
+    Serial.println("[STREAM] Servidor MJPEG ativo em http://192.168.1.101:81/stream");
 }
 
-// =============================================================================
-// LOOP PRINCIPAL NÃO-BLOQUEANTE (EXECUÇÃO DE ETAPAS 3 A 8)
-// =============================================================================
+void loop() {
+    slaveStreamServer.updateSlaveCam();
+}
+
+#else
+
+// -----------------------------------------------------------------------------
+// MODO MASTER (ESP32 DEVKIT V1 - IP 192.168.1.100): Controle, I2C, MOSFET e Web
+// -----------------------------------------------------------------------------
+static MotorController motors;
+static ThermalSensor thermalSensor(MLX90614_DEFAULT_ADDR);
+static TelemetryServer telemetryServer;
+
+static uint32_t lastTelemetryMs = 0;
+static uint32_t lastThermalReadMs = 0;
+static ThermalData currentThermalData = {0.0f, 0.0f, false, 0};
+static uint8_t currentThermalAlert = 0;
+
+enum class RobotOperationalState {
+    BOOT_DIAGNOSTICS,
+    NORMAL_OPERATION,
+    THERMAL_WARNING_PREVENTIVE, // >= 50 °C (Alerta Web/Serial)
+    THERMAL_EMERGENCY_STOP      // >= 70 °C (Parada crítica dos motores)
+};
+
+static RobotOperationalState currentState = RobotOperationalState::BOOT_DIAGNOSTICS;
+
+void runSelfTest() {
+    Serial.println("\n[MASTER] Iniciando Autodiagnostico na ESP32 DevKit V1...");
+
+    // 1. Barramento I2C (GPIO 21 = SDA, GPIO 22 = SCL)
+    bool i2c_ok = thermalSensor.begin(PIN_I2C_SDA, PIN_I2C_SCL, I2C_FREQUENCY_HZ);
+    if (!i2c_ok) {
+        Serial.println("[FALHA] Sensor MLX90614 nao respondeu no endereco 0x5A!");
+    } else {
+        Serial.println("[OK] Sensor MLX90614 (GY-906) reconhecido em GPIO 21/22.");
+    }
+
+    // 2. Ponte H L298N (4 fios PWM: IN1=26, IN2=27, IN3=14, IN4=13)
+    motors.begin();
+    Serial.println("[OK] Ponte H L298N configurada em 4 pinos PWM (GPIOs 26, 27, 14, 13 @ 1500 Hz).");
+
+    // 3. Módulo MOSFET Duplo dos Faróis Olho de Águia 12V (GPIO 25)
+    pinMode(PIN_HEADLIGHT_PWM, OUTPUT);
+    ledcSetup(PWM_CH_HEADLIGHT, PWM_FREQ_HZ, PWM_RESOLUTION_BITS);
+    ledcAttachPin(PIN_HEADLIGHT_PWM, PWM_CH_HEADLIGHT);
+    ledcWrite(PWM_CH_HEADLIGHT, 0);
+    Serial.println("[OK] Modulo MOSFET Duplo (Farois 12V) configurado na GPIO 25.");
+
+    currentState = RobotOperationalState::NORMAL_OPERATION;
+}
+
+void setup() {
+    Serial.begin(SERIAL_BAUD_RATE);
+    delay(200);
+
+    Serial.println("==================================================");
+    Serial.println("  ROBO INSPETOR (UGV) - ESP32 DEVKIT V1 (MASTER)  ");
+    Serial.println("  Controle L298N + MLX90614 + MOSFET + Web Server ");
+    Serial.println("==================================================");
+
+    runSelfTest();
+
+    telemetryServer.beginMaster(&motors);
+    Serial.println("[WEB] Painel Master ativo na porta 80 (Rotas: /, /cmd, /temp, /status).");
+}
+
 void loop() {
     uint32_t now = millis();
 
-    // Processamento de comandos interativos pelo Monitor Serial (para testes no Wokwi)
+    // Comandos via Monitor Serial (W, A, S, D, Espaço, L) para bancada e Wokwi
     if (Serial.available()) {
         char cmd = Serial.read();
-        motors.resetWatchdog();
         if (cmd == 'w' || cmd == 'W') {
             Serial.println("[MANUAL] Frente (180)");
             motors.drive(DriveDirection::FORWARD, 180);
         } else if (cmd == 's' || cmd == 'S') {
-            Serial.println("[MANUAL] Ré (180)");
+            Serial.println("[MANUAL] Re (-180)");
             motors.drive(DriveDirection::BACKWARD, 180);
         } else if (cmd == 'a' || cmd == 'A') {
             Serial.println("[MANUAL] Giro Esquerda (160)");
@@ -180,77 +125,68 @@ void loop() {
             Serial.println("[MANUAL] Parada Total");
             motors.drive(DriveDirection::STOP, 0);
         } else if (cmd == 'l' || cmd == 'L') {
-            static bool light_on = false;
-            light_on = !light_on;
-            ledcWrite(PWM_CHANNEL_HEADLIGHT, light_on ? 255 : 0);
-            Serial.println(light_on ? "[FARÓIS] Ligados (100%)" : "[FARÓIS] Desligados");
+            uint8_t next_val = (telemetryServer.getHeadlightBrightness() > 0) ? 0 : 255;
+            telemetryServer.setHeadlightBrightness(next_val);
+            Serial.println(next_val > 0 ? "[FAROIS] MOSFET GPIO 25 Ligado (100%)" : "[FAROIS] MOSFET GPIO 25 Desligado");
         }
     }
 
-    // ETAPAS 3 & 4: Atualização de Tração, Rampas e Watchdog (500 ms)
+    // Atualização de Tração, Rampas e Watchdog Failsafe (1000 ms)
     if (currentState != RobotOperationalState::THERMAL_EMERGENCY_STOP) {
         motors.update();
     } else {
         motors.emergencyStop();
     }
 
-    // ETAPA 5: Varredura Térmica e de Bateria Contínua Não-Bloqueante (100 ms)
+    // Leitura Térmica I2C Não-Bloqueante (a cada 100 ms)
     if ((now - lastThermalReadMs) >= SENSOR_READ_INTERVAL_MS) {
         lastThermalReadMs = now;
         currentThermalData = thermalSensor.read();
-        readBatteryStatus();
 
-        bool thermal_crit = (currentThermalData.is_valid && currentThermalData.object_temperature >= ALERTA_TEMP_CRITICA_C);
-        bool thermal_warn = (currentThermalData.is_valid && currentThermalData.object_temperature >= ALERTA_TEMP_PREVENTIVO_C);
+        if (currentThermalData.is_valid) {
+            float temp_obj = currentThermalData.object_temperature;
 
-        if (thermal_crit || batteryCriticalStop) {
-            if (currentState != RobotOperationalState::THERMAL_EMERGENCY_STOP) {
-                currentState = RobotOperationalState::THERMAL_EMERGENCY_STOP;
-                if (thermal_crit) {
-                    Serial.println("[ALERTA CRITICO] 70°C ATINGIDOS! Parada de emergencia do UGV.");
-                } else {
-                    Serial.println("[ALERTA CRITICO] BATERIA < 9.9V! Corte de tracao para protecao das celulas 3S.");
+            if (temp_obj >= ALERTA_TEMP_CRITICA_C) {
+                currentThermalAlert = 2;
+                if (currentState != RobotOperationalState::THERMAL_EMERGENCY_STOP) {
+                    currentState = RobotOperationalState::THERMAL_EMERGENCY_STOP;
+                    Serial.println("[ALERTA CRITICO] 70°C ATINGIDOS! Parada imediata dos motores.");
+                    motors.emergencyStop();
                 }
-                motors.emergencyStop();
-            }
-        } else if (thermal_warn || batteryLowWarning) {
-            if (currentState != RobotOperationalState::THERMAL_WARNING_PREVENTIVE) {
-                currentState = RobotOperationalState::THERMAL_WARNING_PREVENTIVE;
-                if (thermal_warn) {
+            } else if (temp_obj >= ALERTA_TEMP_PREVENTIVO_C) {
+                currentThermalAlert = 1;
+                if (currentState != RobotOperationalState::THERMAL_WARNING_PREVENTIVE) {
+                    currentState = RobotOperationalState::THERMAL_WARNING_PREVENTIVE;
                     Serial.println("[ALERTA PREVENTIVO] 50°C detectados no alvo.");
-                } else {
-                    Serial.println("[ALERTA PREVENTIVO] Bateria baixa (< 10.5V). Retornar o UGV.");
                 }
-            }
-        } else {
-            if (currentState != RobotOperationalState::NORMAL_OPERATION) {
-                currentState = RobotOperationalState::NORMAL_OPERATION;
+            } else {
+                currentThermalAlert = 0;
+                if (currentState != RobotOperationalState::NORMAL_OPERATION) {
+                    currentState = RobotOperationalState::NORMAL_OPERATION;
+                }
             }
         }
     }
 
-    // Atualização da sinalização sonora/visual
-    updateAlertSignaling(now);
+    // Atualização do Servidor Web e Emissão de Telemetria JSON (a cada 500 ms)
+    RobotTelemetryState telem;
+    telem.uptime_ms = now;
+    telem.motor_left_speed = motors.getCurrentSpeedLeft();
+    telem.motor_right_speed = motors.getCurrentSpeedRight();
+    telem.target_left_speed = motors.getTargetSpeedLeft();
+    telem.target_right_speed = motors.getTargetSpeedRight();
+    telem.thermal = currentThermalData;
+    telem.thermal_alert_level = currentThermalAlert;
+    telem.headlight_pwm = telemetryServer.getHeadlightBrightness();
+    telem.watchdog_alert = motors.isWatchdogTriggered();
+    telem.wifi_rssi = WiFi.RSSI();
 
-    // ETAPA 6: Despacho de Telemetria (200 ms)
+    telemetryServer.updateMaster(telem);
+
     if ((now - lastTelemetryMs) >= TELEMETRY_INTERVAL_MS) {
         lastTelemetryMs = now;
-
-        RobotTelemetryState telem;
-        telem.uptime_ms = now;
-        telem.motor_left_speed = motors.getCurrentSpeedLeft();
-        telem.motor_right_speed = motors.getCurrentSpeedRight();
-        telem.target_left_speed = motors.getTargetSpeedLeft();
-        telem.target_right_speed = motors.getTargetSpeedRight();
-        telem.thermal = currentThermalData;
-        telem.battery_voltage = currentBatteryVoltage;
-        telem.battery_percentage = currentBatteryPct;
-        telem.battery_low_warning = batteryLowWarning;
-        telem.battery_critical_stop = batteryCriticalStop;
-        telem.watchdog_alert = motors.isWatchdogTriggered();
-        telem.wifi_rssi = WiFi.RSSI();
-
-        telemetryServer.update(telem);
         telemetryServer.logSerialJson(telem);
     }
 }
+
+#endif

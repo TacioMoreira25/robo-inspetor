@@ -1,63 +1,58 @@
-# 02. Guia de Simulação no Wokwi Simulator: Racional de Modelagem e Componentes
+# 02. Guia Passo a Passo de Simulação (Wokwi)
 
-Este documento estabelece o **Racional de Engenharia da Simulação Virtual**: por que determinados componentes do Robô Inspetor (UGV V1.0) estão presentes no simulador Wokwi, por que outros foram intencionalmente abstraídos e qual a exata utilidade de cada um no ecossistema de validação pré-bancada.
-
----
-
-## 1. Filosofia de Simulação: O que Simular vs. O que Abstrair
-
-Em projetos de sistemas embarcados e robótica crítica, **uma simulação digital em nível de instrução (Cycle-Accurate / Hardware-in-the-Loop simulado) tem como objetivo primordial validar software, máquinas de estado, integridade de barramentos lógicos e regras de segurança**.
-
-Simular elementos analógicos passivos ou eletroquímicos em um emulador lógico adiciona ruído computacional sem nenhum benefício para a lógica do firmware. A divisão rigorosa dos componentes é apresentada a seguir.
+A simulação no Wokwi testa toda a lógica da **ESP32 DevKit V1 (Master)**: controle PWM de 4 pinos da Ponte H L298N, leitura I2C do sensor térmico MLX90614, acionamento PWM do Módulo MOSFET dos faróis e trava de segurança (Failsafe de 1 segundo).
 
 ---
 
-## 2. Matriz Completa de Componentes: Simulados vs. Abstraídos
+## 1. Diagrama do Circuito no Simulador (`diagram.json`)
 
-A tabela abaixo correlaciona todos os itens do projeto real, justificando com rigor técnico a presença ou ausência de cada um no simulador:
+```mermaid
+flowchart LR
+    subgraph WOKWI["Circuito Virtual no Wokwi (ESP32 DevKit V1)"]
+        ESP["ESP32 DevKit V1<br/>(Master)"]
+        GY["Chip Customizado GY-906<br/>(MLX90614 I2C 0x5A)"]
+        L1["LED Verde Esq (IN1)<br/>Motor Esq Frente"]
+        L2["LED Amarelo Esq (IN2)<br/>Motor Esq Ré"]
+        L3["LED Verde Dir (IN3)<br/>Motor Dir Frente"]
+        L4["LED Amarelo Dir (IN4)<br/>Motor Dir Ré"]
+        LF["LED Branco (MOSFET)<br/>Faróis 12V"]
+    end
 
-| Componente Real (BOM) | Presente no Wokwi? | Categoria | Racional Técnico e Utilidade no Projeto |
-|---|:---:|:---:|---|
-| **ESP32 DevKit V1 / ESP32-CAM** | **SIM** *(com nuances)* | Microcontrolador | **Núcleo de Processamento e Co-processamento:** Executa o firmware C++ real compilado em arquitetura Xtensa. Simula os timers de PWM (LEDC), barramento I2C, conversor ADC (`GPIO 34`), UART Serial e GPIOs. *(Nota: O pipeline de vídeo DVP/DMA da OV2640 na ESP32-CAM é emulado via Mock JPEG, pois nenhum emulador web executa o sensor CMOS de alta velocidade com fidelidade física).* |
-| **Sensor MLX90614 (GY-906)** | **SIM** | Sensor I2C (Custom Chip) | **Termografia Preditiva:** Emulado via WebAssembly (`gy906.wasm`). Responde ao protocolo I2C/SMBus no endereço `0x5A`, transmitindo os registradores `0x06` (Ambiente) e `0x07` (Objeto). Permite injetar variações térmicas via sliders e validar os gatilhos de 50°C e 70°C. |
-| **Divisor de Tensão Bateria ($10\text{k}\Omega / 3,3\text{k}\Omega$)** | **SIM** *(via Potenciômetro)* | Sensoriamento Analógico (ADC) | **Monitoramento de Carga 3S2P:** Emulado pelo potenciômetro conectado à `GPIO 34` (`ADC1_CH6`). Converte a faixa da bateria (9,9V–12,6V) para 0–3,12V, validando o alerta de bateria fraca (<10,5V) e o corte crítico (<9,9V). |
-| **Driver Ponte H L298N (Sinais)** | **SIM** *(via LEDs de estado)* | Potência Lógica | **Tração das Esteiras:** Emulado pelos sinais de direção (`IN1..IN4`) e PWM (`ENA`/`ENB` a 1500 Hz). Os 4 LEDs (`led_left_fwd`, `led_left_rev`, `led_right_fwd`, `led_right_rev`) comprovam visualmente aceleração em rampa, sentido bidirecional e corte imediato de torque. |
-| **Faróis LED + MOSFET D4184** | **SIM** *(via LED Branco)* | Iluminação / Potência | **Iluminação Frontal em Espaços Confinados:** Emulado por LED branco de alto brilho conectado ao canal PWM da `GPIO 4`. Valida o controle de intensidade luminosa (*dimming*) pelo dashboard web e comandos seriais. |
-| **LED Difuso Vermelho 5mm** | **SIM** | Sinalização Visual | **Alerta Local de Temperatura e Bateria:** Conectado à `GPIO 15`. Acende quando o ativo atinge $\ge 50^\circ\text{C}$ ou a bateria cai abaixo de $10,5\text{V}$. |
-| **Buzzer Ativo 5V (BC547)** | **SIM** | Sinalização Sonora | **Alarme Local Acústico:** Emulado pelo módulo `wokwi-buzzer` na `GPIO 13`. Comprova o padrão de bipe intermitente no alerta preventivo (50°C / <10,5V) e alarme contínuo na parada crítica (70°C / <9,9V). |
-| **Cooler Fan 80mm (`DF0922505SEL` - 5V)** | **NÃO** | Exaustão Térmica 5V DC | **Dispensável no Simulador:** O cooler real opera em **5,00 V DC (0,09 A / 0,45 W)** ligado diretamente na saída regulada de 5,00V do Step-Down LM2596 (sem controle por GPIO), girando continuamente enquanto o robô está energizado. |
-| **Pack Bateria 3S2P Li-Ion (4400mAh)** | **NÃO** | Eletroquímica / Potência | **Dispensável no Simulador:** Fonte eletroquímica pura. O simulador assume trilhos de alimentação ideais (`VCC`/`3V3`), enquanto a curva de descarga é injetada pelo potenciômetro na `GPIO 34`. |
-| **Placa BMS 3S (10A)** | **NÃO** | Proteção Passiva de Bateria | **Dispensável no Simulador:** Atua exclusivamente no corte físico de sobrecorrente/subtensão das células. |
-| **Chave Geral KCD1-101 e Fusível 15A** | **NÃO** | Chaveamento Eletromecânico | **Dispensável no Simulador:** Elementos puramente mecânicos/passivos de seccionamento e proteção contra curto-circuito. |
-| **Voltímetro Digital LED DC** | **NÃO** | Monitoramento Visual Passivo | **Dispensável no Simulador:** Exibe a tensão no painel superior físico; no simulador e dashboard, a leitura já é feita via ADC na `GPIO 34`. |
-| **Step-Down Buck LM2596 (5,00V)** | **NÃO** | Conversão Analógica DC-DC | **Dispensável no Simulador:** Regulador indutivo analógico que alimenta a linha de 5,00V (ESP32-CAM, ESP32 DevKit V1, Cooler 80mm 5V e lógica L298N). |
-| **Step-Up Boost 400W (24,0V)** | **NÃO** | Conversão Analógica DC-DC | **Dispensável no Simulador:** Eleva 12V para 24,0V para os enrolamentos dos motores JGB37-520 no pino `VMS` da L298N. |
-| **Capacitores Anti-Brownout / EMI e Vedação** | **NÃO** | Filtragem e Proteção Física | **Dispensáveis no Simulador:** O ambiente virtual não sofre quedas de tensão por RF, ruído de escovas (EMI) ou infiltração de água/poeira (IP65). |
-
----
-
-## 3. O Que É Comprovado com Exatidão Matemática na Simulação
-
-1. **Protocolo I2C / SMBus:** Handshake mestre-escravo no endereço `0x5A`, *Repeated Start* e leitura de 16 bits dos registradores `0x06` e `0x07`.
-2. **Máquina de Estados Térmica e de Bateria:**
-   - Alerta preventivo aos **50 °C** ou bateria **< 10,5 V** (Buzzer intermitente + LED vermelho).
-   - Parada crítica de emergência aos **70 °C** ou bateria **< 9,9 V** (corte instantâneo de PWM dos motores e alarme contínuo).
-3. **Leitura Analógica ADC (Divisor $10\text{k}\Omega / 3,3\text{k}\Omega$):** Conversão de 12 bits na `GPIO 34` com cálculo em tempo real da tensão real (V) e porcentagem de carga (%).
-4. **Mecanismo Failsafe (Watchdog):** Desligamento autônomo dos motores após 500 ms sem recepção de pacotes de controle.
-5. **Frequência e Rampas de PWM (LEDC):** Geração estável de 1500 Hz e escalonamento suave a cada 20 ms via *Slew Rate Limiter*.
+    GY <-->|"SDA (GPIO 21)<br/>SCL (GPIO 22)"| ESP
+    ESP -->|"GPIO 26 (PWM)"| L1
+    ESP -->|"GPIO 27 (PWM)"| L2
+    ESP -->|"GPIO 14 (PWM)"| L3
+    ESP -->|"GPIO 13 (PWM)"| L4
+    ESP -->|"GPIO 25 (PWM)"| LF
+```
 
 ---
 
-## 4. Como Executar a Simulação Interativa no VS Code
+## 2. Passo a Passo para Rodar a Simulação no VS Code
 
-1. Selecione o ambiente **`env:wokwi`** no PlatformIO e compile clicando em **Build (✓)**.
-2. Abra o arquivo [`diagram.json`](file:///home/tacio/dev/academic/robo-inspetor/diagram.json) e clique no botão verde de **Play**.
-3. **Comandos Interativos via Wokwi Terminal:**
-   - Digite **`w`**: Avanço das esteiras (PWM 180 com rampa suave).
-   - Digite **`s`**: Recuo das esteiras (Ré).
-   - Digite **`a`** / **`d`**: Giro no próprio eixo (*Zero Turn*).
-   - Digite **` ` (espaço)**: Parada total imediata.
-   - Digite **`l`**: Liga / Desliga os Faróis Olho de Águia (MOSFET na GPIO 4).
-4. **Injeção Térmica e de Bateria:**
-   - Clique no sensor `gy906` e mova os sliders para testar os gatilhos de 50°C e 70°C.
-   - Gire o potenciômetro `Divisor Bateria 3S (GPIO 34)` para simular a queda de tensão da bateria abaixo de 10,5V e 9,9V.
+1. **Abrir o Projeto:** Abra a pasta `/home/tacio/dev/academic/robo-inspetor` no VS Code com as extensões **PlatformIO IDE** e **Wokwi Simulator** instaladas.
+2. **Compilar:** Selecione o ambiente **`env:wokwi`** na barra azul inferior e clique em **Build (`✓`)** (ou pressione `Ctrl+Alt+B`).
+3. **Iniciar o Simulador:** Abra o arquivo [`diagram.json`](file:///home/tacio/dev/academic/robo-inspetor/diagram.json) e clique no botão verde **Play**.
+4. **Testar os Motores e Faróis pelo Teclado (No Terminal Serial do Wokwi):**
+   - Digite **`w`** -> Anda para **Frente** (acendem os LEDs verdes `GPIO 26` e `GPIO 14`).
+   - Digite **`s`** -> Anda de **Ré** (acendem os LEDs amarelos `GPIO 27` e `GPIO 13`).
+   - Digite **`a`** -> **Gira para a Esquerda** (`GPIO 27` + `GPIO 14`).
+   - Digite **`d`** -> **Gira para a Direita** (`GPIO 26` + `GPIO 13`).
+   - Digite **`Espaço`** -> **Parada Imediata** (todos os 4 LEDs apagam).
+   - Digite **`l`** -> **Liga / Desliga o Farol** (acende ou apaga o LED branco na `GPIO 25`).
+5. **Testar os Gatilhos de Temperatura e o Failsafe:**
+   - **Failsafe de 1 Segundo (`1000 ms`):** Pare de digitar qualquer tecla por 1 segundo. Os LEDs dos motores apagam sozinhos e o terminal mostra `"watchdog": true`.
+   - **Alerta Térmico:** Clique em cima do sensor **`gy906`** no simulador e suba o slider `Object Temp` para **`>= 50 °C`** (alerta preventivo) e **`>= 70 °C`** (corte imediato dos motores).
+
+---
+
+## 3. O Que Está no Simulador vs. O Que Só Existe no Robô Físico
+
+| Componente do Robô | Está no Wokwi? | Por quê? |
+| :--- | :---: | :--- |
+| **ESP32 DevKit V1 (Master)** | **SIM** | Executa o firmware C++ real da placa Master. |
+| **Sensor MLX90614 (GY-906)** | **SIM** | Emulado via WebAssembly (`chips/gy906/gy906.wasm`) nos pinos `GPIO 21` e `GPIO 22`. |
+| **Ponte H L298N (`IN1..IN4`)** | **SIM (4 LEDs)** | Os 4 LEDs mostram exatamente o pulso PWM dos pinos `GPIO 26, 27, 14 e 13`. |
+| **Módulo MOSFET (Faróis 12V)** | **SIM (LED Branco)** | O LED branco mostra o acionamento PWM na `GPIO 25`. |
+| **ESP32-CAM (Slave — Vídeo)** | **NÃO** | No robô físico ela fica isolada apenas transmitindo vídeo na porta `81` (`192.168.1.101`). |
+| **Bateria 3S2P, Chave KCD1, Fusível 15A, Step-Up 24V, LM2596 5V, Cooler 12V e Voltímetro 3 Fios** | **NÃO** | São componentes elétricos passivos/analógicos de alimentação que não dependem de código. |

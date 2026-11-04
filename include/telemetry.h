@@ -12,10 +12,8 @@ struct RobotTelemetryState {
     int16_t target_left_speed;
     int16_t target_right_speed;
     ThermalData thermal;
-    float battery_voltage;
-    uint8_t battery_percentage;
-    bool battery_low_warning;
-    bool battery_critical_stop;
+    uint8_t thermal_alert_level; // 0 = OK, 1 = Alerta Preventivo (>=50C), 2 = Emergência (>=70C)
+    uint8_t headlight_pwm;
     bool watchdog_alert;
     int8_t wifi_rssi;
 };
@@ -23,23 +21,26 @@ struct RobotTelemetryState {
 class TelemetryServer {
 public:
     TelemetryServer();
-    
-    // Inicialização da pilha de rede (AP ou STA) e servidores HTTP
-    void begin(MotorController *motor_ctrl, CameraStream *cam_stream);
-    
-    // Processamento de requisições clientes (não-bloqueante)
-    void update(const RobotTelemetryState &state);
 
-    // Emissão serial formatada em JSON (para monitor Wokwi e telemetria por cabo)
+    // Inicialização da rede Wi-Fi (STA com IP Fixo 192.168.1.100 ou Fallback SoftAP) e servidor HTTP
+    void beginMaster(MotorController *motor_ctrl);
+
+    // Inicialização dedicada da ESP32-CAM Slave (IP Fixo 192.168.1.101, Porta 81 /stream)
+    void beginSlaveCam(CameraStream *cam_stream);
+
+    // Processamento de requisições HTTP do Master
+    void updateMaster(const RobotTelemetryState &state);
+
+    // Processamento de requisições HTTP de vídeo da Slave CAM
+    void updateSlaveCam();
+
+    // Emissão serial formatada em JSON (a cada 500 ms)
     void logSerialJson(const RobotTelemetryState &state);
+
+    uint8_t getHeadlightBrightness() const;
+    void setHeadlightBrightness(uint8_t val);
 
 private:
     MotorController *_motor_ref;
     CameraStream *_cam_ref;
-    uint32_t _last_telemetry_emit_ms;
-    
-    void handleRoot();
-    void handleStatus(const RobotTelemetryState &state);
-    void handleControl();
-    void handleMjpegStream();
 };

@@ -1,89 +1,91 @@
-# Robo Inspetor Terrestre (UGV) - Firmware Unico e Simulacao V1.0
+# Robo Inspetor Terrestre (UGV)
 
-Projeto de firmware modular em C++ para Veiculo Terrestre Nao Tripulado (UGV) sobre esteiras, destinado a inspecao preditiva e termografica em ambientes industriais confinados.
+Projeto de firmware modular em C++ e ambiente de simulacao para Veiculo Terrestre Nao Tripulado (UGV) sobre esteiras, destinado a inspecao visual e termografica em ambientes industriais confinados.
 
-O projeto adota o principio de Firmware Unico com Camada de Abstracao de Hardware (HAL): o mesmo codigo-fonte e simulado no Wokwi Simulator dentro do VS Code e gravado via USB no hardware fisico (ESP32 DevKit V1 e ESP32-CAM) na bancada.
-
----
-
-## 1. Arquitetura de Hardware e Alimentacao
-
-A distribuicao eletrica do robo utiliza topologia trifurcada a partir de um pack de baterias Li-Ion 3S2P (11,1 V nominal / 12,6 V pico / 4400 mAh com BMS de 10 A e fusivel lamina de 15 A):
-
-1. Linha de Tracao (24,0 V Regulado): Elevada por conversor Step-Up Boost de 400W para alimentar o pino VMS do driver Ponte H L298N e os dois motorredutores JGB37-520 (24V / 107 RPM).
-2. Linha Logica (5,00 V Regulado): Rebaixada por conversor Step-Down Buck LM2596 para alimentar a ESP32-CAM, a ESP32 DevKit V1, o Cooler Fan de 80 mm (`DF0922505SEL` - 5,00 V DC / 0,09 A / 0,45 W), o buzzer ativo e o estagio logico do L298N.
-3. Linha Auxiliar 12V Direto (11,1 V a 12,6 V): Alimenta diretamente os Farois LED Olho de Aguia (via modulo MOSFET D4184), o voltimetro LED de painel e o divisor de tensao analogico (10 kOhm e 3,3 kOhm conectado a GPIO 34 da ESP32 DevKit V1).
-
-Avisos Criticos de Seguranca:
-- A remocao do jumper de 5V da placa L298N e obrigatoria antes da energizacao com 24V.
-- O Cooler Fan de 80 mm (`DF0922505SEL`) opera em 5,00 V DC e deve ser conectado exclusivamente na saida regulada de 5,00 V do conversor LM2596 (jamais nos 12V diretos da bateria).
+A arquitetura consolida todo o processamento de controle (Dashboard Web, tracao diferencial via Ponte H L298N, iluminacao via Modulo MOSFET Duplo e leitura termica I2C MLX90614) na **ESP32 DevKit V1 (Master - IP `192.168.4.1`)**, que cria a rede Wi-Fi propria do robo (`ROBO_INSPETOR_UGV`, senha `12345678`), enquanto a **ESP32-CAM (Slave - IP `192.168.4.2`)** se conecta nela e fica 100% dedicada ao streaming de video MJPEG na porta 81 (`http://192.168.4.2:81/stream`).
 
 ---
 
-## 2. Estrutura do Repositorio
+## 1. Distribuicao de Energia e Potencia (12V, 24V e 5V)
 
-- `platformio.ini`: Configuracao dos ambientes de compilacao (`env:wokwi`, `env:esp32_hardware` e `env:esp32cam_hardware`).
-- `wokwi.toml`: Mapeamento de binarios e do chip customizado WebAssembly para o simulador.
-- `diagram.json`: Circuito eletrico virtual interativo (ESP32, GY-906, potenciometro divisor de tensao da bateria na GPIO 34, sinalizacao bidirecional de motores, farol, LED de alerta e buzzer).
-- `chips/gy906/`: Implementacao em C e binario WebAssembly (`gy906.wasm`) do sensor termico MLX90614 (I2C no endereco 0x5A).
-- `include/`:
-  - `config.h`: Mapeamento de GPIOs, frequencia PWM (1500 Hz), parametros do divisor de tensao da bateria (10k/3.3k), limites termicos e temporizacoes.
-  - `motor_controller.h`: Tipos e assinaturas de controle diferencial com rampa de aceleracao e failsafe.
-  - `thermal_sensor.h`: Driver de leitura I2C via registradores de RAM 0x06 e 0x07.
-  - `telemetry.h`: Servidor Web SoftAP, rotas de comando e serializacao JSON (incluindo tensao e porcentagem da bateria).
-  - `camera_stream.h`: Abstracao do pipeline de video (Mock JPEG no simulador vs OV2640 DMA no hardware real).
-- `src/`:
-  - `main.cpp`: Ciclo principal, leitura ADC da bateria (GPIO 34), autoteste de hardware e maquina de estados operacionais.
-  - `motor_controller.cpp`: Geracao de PWM via LEDC, controle de rampa (50 Hz), deadband e corte por watchdog (500 ms).
-  - `thermal_sensor.cpp`: Comunicacao I2C com Repeated Start e conversao Kelvin para Celsius.
-  - `telemetry.cpp`: Dashboard HTML5, despacho JSON na rota `/status` e comandos via `/control` e `/light`.
-  - `camera_stream.cpp`: Tratamento condicional para streaming de video MJPEG na porta 81.
+O sistema parte da **Bateria de Litio 3S2P** (~11,1V a 12,6V / 4400 mAh) conectada via plugue **XT60**:
+
+1. **Linha de Entrada e Protecao (12V Pos-Chave):**
+   - O fio positivo (vermelho) do XT60 passa pela **Chave Gangorra KCD1** (interruptor geral) e pelo **Porta-Fusivel Lamina de 15A**, abrindo no **Chicote Principal em Y** que alimenta:
+     - `IN+` do Conversor **Step-Up 400W**.
+     - `IN+` do Conversor **Step-Down LM2596**.
+     - `VCC` de entrada (`V+`) nos bornes do **Modulo MOSFET Duplo**.
+     - Fios **Vermelho + Branco** (soldados juntos) do **Voltimetro Digital de 3 Fios**.
+     - **Mini Chicote de 12V:** Fio positivo (vermelho) do **Cooler de 80mm (12V)** + fios positivos (vermelhos) dos dois **Farois Olho de Aguia (12V)**.
+2. **Barramento de Terra (GND Comum - 0V):**
+   - O fio negativo do XT60 alimenta o barramento azul/negativo (`-`) da protoboard e interliga os terras de todos os modulos (`IN-` do Step-Up 400W, `IN-` do Step-Down LM2596, `GND` de potencia e logico do Modulo MOSFET, fio preto do Voltimetro Digital, fio preto do Cooler de 80mm com fio amarelo de tacometro isolado, `GND` da Ponte H L298N, `GND` da ESP32 DevKit V1, `GND` da ESP32-CAM e `GND` do sensor MLX90614).
+3. **Linha de 24V (Motores - Saida do Step-Up 400W):**
+   - `OUT+ (24V)` -> Borne `12V/VCC` da **Ponte H L298N**.
+   - `OUT-` -> Borne `GND` da **Ponte H L298N**.
+   - **Motores JGB37-520 (24V):** Conectados nos bornes laterais `OUT1`/`OUT2` (Motor Esquerdo) e `OUT3`/`OUT4` (Motor Direito) da L298N.
+4. **Linha de 5V (Logica - Saida do Step-Down LM2596):**
+   - `OUT+ (5V)` -> Barramento positivo (`+`) da protoboard (com capacitor eletrolitico de filtro no trilho), distribuindo 5V para:
+     - Pino `VIN` / `5V` da **ESP32 DevKit V1**.
+     - Pino `5V` da **ESP32-CAM**.
+     - Borne `5V` (Logica) da **Ponte H L298N** (com o jumper regulador de 5V da placa L298N removido).
+
+---
+
+## 2. Mapeamento Definitivo de Pinos (ESP32 DevKit V1 - Master)
+
+| Pino ESP32 DevKit | Conectado Onde? | Funcao no Robo |
+| :--- | :--- | :--- |
+| `VIN` (ou `5V`) | Barramento `+` da Protoboard (5V) | Alimentacao da placa |
+| `GND` | Barramento `-` da Protoboard (GND) | Referencia de terra comum |
+| `3V3` | Pino `VIN` do Sensor MLX90614 | Alimentacao 3,3V dedicada ao sensor termico |
+| `GPIO 26` | Pino `IN 1` da Ponte H L298N | Motor Esquerdo - Sentido A / PWM (1500 Hz) |
+| `GPIO 27` | Pino `IN 2` da Ponte H L298N | Motor Esquerdo - Sentido B / PWM (1500 Hz) |
+| `GPIO 14` | Pino `IN 3` da Ponte H L298N | Motor Direito - Sentido A / PWM (1500 Hz) |
+| `GPIO 13` | Pino `IN 4` da Ponte H L298N | Motor Direito - Sentido B / PWM (1500 Hz) |
+| `GPIO 21` | Pino `SDA` do Sensor MLX90614 | Dados I2C da temperatura (Pull-up 4,7 kOhm para 3V3) |
+| `GPIO 22` | Pino `SCL` do Sensor MLX90614 | Clock I2C da temperatura (Pull-up 4,7 kOhm para 3V3) |
+| `GPIO 25` | Pino `SIG / PWM` do Modulo MOSFET | Controle de brilho dos Farois 12V (PWM 1500 Hz) |
+| `GPIO 16` (`RX2`) | Pino `U0T` da ESP32-CAM *(Opcional)* | Reserva fisica de comunicacao serial no chassi |
+| `GPIO 17` (`TX2`) | Pino `U0R` da ESP32-CAM *(Opcional)* | Reserva fisica de comunicacao serial no chassi |
+
+*(Nota: Os jumpers `ENA` e `ENB` da Ponte H L298N permanecem fechados na placa, pois o controle de velocidade e direcao e feito diretamente por PWM de 4 canais nos pinos `IN1` a `IN4`).*
+
+---
+
+## 3. Estrutura do Repositorio
+
+- `platformio.ini`: Configuracao dos ambientes (`env:wokwi`, `env:esp32_hardware` para a Master DevKit V1 e `env:esp32cam_hardware` para a Slave ESP32-CAM).
+- `wokwi.toml`: Mapeamento do firmware compilado e do chip customizado WebAssembly (`gy906.wasm`) para o simulador Wokwi.
+- `diagram.json`: Circuito eletrico virtual da ESP32 DevKit V1 no Wokwi (GY-906 via I2C `GPIO 21/22`, 4 LEDs indicadores dos canais PWM da Ponte H L298N nos pinos `GPIO 26, 27, 14, 13` e LED indicador do Modulo MOSFET na `GPIO 25`).
+- `chips/gy906/`: Implementacao em C e binario WebAssembly do sensor termico MLX90614 (I2C no endereco `0x5A`).
+- `include/` e `src/`:
+  - `config.h`: Pinagem oficial da ESP32 DevKit V1, rede Wi-Fi propria (`ROBO_INSPETOR_UGV` / `12345678`), IPs fixos (`192.168.4.1` e `192.168.4.2`), frequencia PWM (1500 Hz) e timeout de Failsafe (1000 ms).
+  - `motor_controller.h` / `motor_controller.cpp`: Controle diferencial por 4 pinos PWM (`IN1..IN4`), cinematica de Joystick Virtual (`driveJoystick`), rampa de aceleracao e corte automatico de Failsafe (1 segundo).
+  - `thermal_sensor.h` / `thermal_sensor.cpp`: Driver de leitura I2C SMBus dos registradores `0x06` (Ambiente) e `0x07` (Objeto).
+  - `telemetry.h` / `telemetry.cpp`: Servidor Web Master na porta 80 (`http://192.168.4.1`) com Dashboard unificado em `PROGMEM` (embed do stream `http://192.168.4.2:81/stream`, Joystick Virtual em Canvas, teclado `W, A, S, D`, botao/slider de farol e rotas `/cmd`, `/temp` e `/status`).
+  - `camera_stream.h` / `camera_stream.cpp`: Servidor HTTP MJPEG dedicado na porta 81 (`/stream`) para a ESP32-CAM.
+  - `main.cpp`: Ciclo principal condicional (`PLACA_ESP32_DEVKIT` para Master e `PLACA_ESP32_CAM` para Slave).
+- `arduino_sketches/`:
+  - `esp32_devkit_master/esp32_devkit_master.ino`: Sketch standalone completo da ESP32 DevKit V1 para gravacao direta via Arduino IDE.
+  - `esp32_cam_stream/esp32_cam_stream.ino`: Sketch standalone dedicado ao streaming MJPEG da ESP32-CAM para gravacao via Arduino IDE.
 - `docs/`:
-  - `01_visao_geral.md`: Especificacoes eletricas (Cooler 5V no LM2596), balanco de potencia, curva de queda do L298N e projeto mecanico PETG.
-  - `02_guia_simulacao.md`: Justificativa tecnica de componentes simulados vs abstraidos e lista dos 8 itens de protecao de bancada.
-  - `03_roteiro_bancada.md`: Tabela de ligacoes, localizacao dos 8 componentes de protecao/vedacao e checklist de pre-energizacao em 4 fases.
-  - `04_pipeline_operacao.md`: Ciclo de vida operacional com termos tecnicos traduzidos e explicados.
+  - `01_visao_geral.md`: Distribuicao de energia (12V, 24V e 5V), divisao Master/Slave, balanco de potencia e mecanica em PETG.
+  - `02_guia_simulacao.md`: Racional de simulacao no Wokwi e matriz de componentes simulados vs abstraidos.
+  - `03_roteiro_bancada.md`: Passo a passo das alteracoes fisicas no chassi, tabela definitiva de pinos e checklist de bancada.
+  - `04_pipeline_operacao.md`: Explicacao didatica do funcionamento conjunto entre a ESP32 DevKit V1 (Master) e a ESP32-CAM (Slave).
 
 ---
 
-## 3. Como Executar a Simulacao no VS Code
+## 4. Como Executar a Simulacao no VS Code (Wokwi)
 
-### Pre-Requisitos
-- Visual Studio Code instalado.
-- Extensao PlatformIO IDE (`platformio.platformio-ide`).
-- Extensao Wokwi Simulator (`wokwi.wokwi-vscode`).
-
-### Passo a Passo
-1. Abra a pasta do projeto no VS Code:
-   ```bash
-   code "/home/tacio/dev/academic/robo-inspetor"
-   ```
-2. Selecione o ambiente `env:wokwi` na barra inferior do PlatformIO.
-3. Compile o projeto clicando no icone Build (✓) ou pressionando `Ctrl+Alt+B`.
-4. Abra o arquivo `diagram.json` e clique no botao Play do Wokwi (ou pressione `F1` e digite `Wokwi: Start Simulator`).
-
----
-
-## 4. Comandos de Teste no Monitor Serial
-
-Com a simulacao em execucao, clique no Wokwi Terminal e envie os seguintes caracteres:
-
-- `w`: Avanco das esteiras (Frente - PWM 180 com rampa suave).
-- `s`: Recuo das esteiras (Re - PWM -180).
-- `a`: Manobra de giro para a esquerda (Zero Turn - esteira esquerda reverte, direita avanca).
-- `d`: Manobra de giro para a direita (Zero Turn - esteira esquerda avanca, direita reverte).
-- `Espaco`: Parada total imediata (PWM 0 em ambos os motores).
-- `l`: Alterna os Farois LED Olho de Aguia entre ligado (100%) e desligado.
-
----
-
-## 5. Validacao dos Sensores, Bateria e Segurancas
-
-1. Ajuste Termico Interativo: Clique no sensor `gy906` na tela do simulador para abrir os controles deslizantes.
-   - Ajuste para 50 °C a 69 °C: Dispara o Alerta Preventivo (LED vermelho acende e o buzzer apita de forma intermitente).
-   - Ajuste para 70 °C ou superior: Dispara a Parada Critica de Emergencia (buzzer emite som continuo e a tracao corta imediatamente para zero).
-2. Simulacao de Descarga da Bateria 3S (GPIO 34): Gire o potenciometro `Divisor Bateria 3S (GPIO 34)` no simulador.
-   - Tensao entre 10,50 V e 12,60 V: Operacao normal.
-   - Tensao abaixo de 10,50 V (~22%): Dispara Alerta Preventivo de Bateria Baixa (buzzer intermitente, LED de alerta e flag `low_warn` no JSON).
-   - Tensao abaixo de 9,90 V (0%): Dispara Corte Critico de Bateria (desliga os motores imediatamente para proteger as celulas Li-Ion 3S).
-3. Failsafe de Conectividade: Apos 500 ms sem recepcao de comandos de movimento, o watchdog assume estado ativo (`"watchdog": true`) e trava os motores, prevenindo deslocamento desgovernado em caso de perda de sinal.
+1. Abra a pasta do projeto no VS Code com as extensoes **PlatformIO IDE** e **Wokwi Simulator** instaladas.
+2. Selecione o ambiente `env:wokwi` e compile o projeto (`Ctrl+Alt+B`).
+3. Abra o arquivo `diagram.json` e inicie a simulacao.
+4. No terminal serial do Wokwi, envie os comandos de teste:
+   - `w`: Avanco das esteiras (`IN1` na GPIO 26 e `IN3` na GPIO 14).
+   - `s`: Recuo das esteiras (`IN2` na GPIO 27 e `IN4` na GPIO 13).
+   - `a`: Giro no proprio eixo para a esquerda.
+   - `d`: Giro no proprio eixo para a direita.
+   - `Espaco`: Parada imediata dos motores.
+   - `l`: Liga ou desliga os Farois 12V no Modulo MOSFET (`GPIO 25`).
+5. Clique sobre o sensor `gy906` durante a simulacao para ajustar os sliders de temperatura e validar o Alerta Preventivo (`>= 50 C`) e a Parada Critica (`>= 70 C`), alem do Failsafe automatico apos `1000 ms` sem comandos.
