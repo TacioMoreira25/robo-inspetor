@@ -111,17 +111,49 @@ void TelemetryServer::beginMaster(MotorController *motor_ctrl) {
         delay(300);
         ledcWrite(PWM_CH_HEADLIGHT, g_headlight_val);
 
-        Serial.println("[2/5] Pulso Motor ESQUERDO -> FRENTE (L298N IN1 = GPIO 26)...");
-        g_motors->pulseSinglePin(PWM_CH_LEFT_IN1, 160, 400);
+        // DESLIGA CANAIS LEDC TEMPORARIAMENTE E TESTA COM NÍVEL LÓGICO PURO (DIGITAL HIGH/LOW)
+        ledcDetachPin(PIN_MOTOR_LEFT_IN1);
+        ledcDetachPin(PIN_MOTOR_LEFT_IN2);
+        ledcDetachPin(PIN_MOTOR_RIGHT_IN3);
+        ledcDetachPin(PIN_MOTOR_RIGHT_IN4);
 
-        Serial.println("[3/5] Pulso Motor ESQUERDO -> RE (L298N IN2 = GPIO 27)...");
-        g_motors->pulseSinglePin(PWM_CH_LEFT_IN2, 160, 400);
+        pinMode(PIN_MOTOR_LEFT_IN1, OUTPUT);
+        pinMode(PIN_MOTOR_LEFT_IN2, OUTPUT);
+        pinMode(PIN_MOTOR_RIGHT_IN3, OUTPUT);
+        pinMode(PIN_MOTOR_RIGHT_IN4, OUTPUT);
 
-        Serial.println("[4/5] Pulso Motor DIREITO -> FRENTE (L298N IN3 = GPIO 14)...");
-        g_motors->pulseSinglePin(PWM_CH_RIGHT_IN3, 160, 400);
+        Serial.println("[2/5] Motor ESQUERDO FRENTE (DIGITAL HIGH 100% PURO)...");
+        digitalWrite(PIN_MOTOR_LEFT_IN2, LOW);
+        digitalWrite(PIN_MOTOR_LEFT_IN1, HIGH);
+        delay(1000);
+        digitalWrite(PIN_MOTOR_LEFT_IN1, LOW);
+        delay(200);
 
-        Serial.println("[5/5] Pulso Motor DIREITO -> RE (L298N IN4 = GPIO 13)...");
-        g_motors->pulseSinglePin(PWM_CH_RIGHT_IN4, 160, 400);
+        Serial.println("[3/5] Motor ESQUERDO RE (DIGITAL HIGH 100% PURO)...");
+        digitalWrite(PIN_MOTOR_LEFT_IN1, LOW);
+        digitalWrite(PIN_MOTOR_LEFT_IN2, HIGH);
+        delay(1000);
+        digitalWrite(PIN_MOTOR_LEFT_IN2, LOW);
+        delay(200);
+
+        Serial.println("[4/5] Motor DIREITO FRENTE (DIGITAL HIGH 100% PURO)...");
+        digitalWrite(PIN_MOTOR_RIGHT_IN4, LOW);
+        digitalWrite(PIN_MOTOR_RIGHT_IN3, HIGH);
+        delay(1000);
+        digitalWrite(PIN_MOTOR_RIGHT_IN3, LOW);
+        delay(200);
+
+        Serial.println("[5/5] Motor DIREITO RE (DIGITAL HIGH 100% PURO)...");
+        digitalWrite(PIN_MOTOR_RIGHT_IN3, LOW);
+        digitalWrite(PIN_MOTOR_RIGHT_IN4, HIGH);
+        delay(1000);
+        digitalWrite(PIN_MOTOR_RIGHT_IN4, LOW);
+
+        // Reanexa os canais PWM
+        ledcAttachPin(PIN_MOTOR_LEFT_IN1, PWM_CH_LEFT_IN1);
+        ledcAttachPin(PIN_MOTOR_LEFT_IN2, PWM_CH_LEFT_IN2);
+        ledcAttachPin(PIN_MOTOR_RIGHT_IN3, PWM_CH_RIGHT_IN3);
+        ledcAttachPin(PIN_MOTOR_RIGHT_IN4, PWM_CH_RIGHT_IN4);
         Serial.println("================ [FIM DO AUTO-TESTE: MOTORES TRAVADOS EM 0] ================\n");
     });
 

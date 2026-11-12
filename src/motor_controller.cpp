@@ -91,13 +91,15 @@ void MotorController::applyHBridge4Pin(uint8_t ch_in_a, uint8_t ch_in_b, int16_t
     uint8_t duty = (uint8_t)abs(speed);
 
     if (speed > 0) {
-        // Giro para FRENTE: Pulso PWM no pino A e 0V no pino B
-        ledcWrite(ch_in_a, duty);
+        // Giro para FRENTE: se velocidade >= 200, entrega 100% DC pleno (255) para os 24V totais
+        uint8_t out_duty = (duty >= 190) ? 255 : duty;
+        ledcWrite(ch_in_a, out_duty);
         ledcWrite(ch_in_b, 0);
     } else if (speed < 0) {
-        // Giro para RÉ: 0V no pino A e Pulso PWM no pino B
+        // Giro para RÉ: se velocidade >= 200, entrega 100% DC pleno (255) para os 24V totais
+        uint8_t out_duty = (duty >= 190) ? 255 : duty;
         ledcWrite(ch_in_a, 0);
-        ledcWrite(ch_in_b, duty);
+        ledcWrite(ch_in_b, out_duty);
     } else {
         // PARADO: 0V em ambos os pinos
         ledcWrite(ch_in_a, 0);
@@ -121,15 +123,13 @@ void MotorController::update() {
     if ((now - _last_ramp_time_ms) >= MOTOR_RAMP_INTERVAL_MS) {
         _last_ramp_time_ms = now;
 
-        if (_current_left != _target_left) {
-            _current_left = computeRamp(_current_left, _target_left);
-            applyHBridge4Pin(PWM_CH_LEFT_IN1, PWM_CH_LEFT_IN2, _current_left);
-        }
+        // Atualiza a velocidade suavemente
+        _current_left = computeRamp(_current_left, _target_left);
+        _current_right = computeRamp(_current_right, _target_right);
 
-        if (_current_right != _target_right) {
-            _current_right = computeRamp(_current_right, _target_right);
-            applyHBridge4Pin(PWM_CH_RIGHT_IN3, PWM_CH_RIGHT_IN4, _current_right);
-        }
+        // Aplica continuamente o sinal PWM na Ponte H
+        applyHBridge4Pin(PWM_CH_LEFT_IN1, PWM_CH_LEFT_IN2, _current_left);
+        applyHBridge4Pin(PWM_CH_RIGHT_IN3, PWM_CH_RIGHT_IN4, _current_right);
     }
 }
 

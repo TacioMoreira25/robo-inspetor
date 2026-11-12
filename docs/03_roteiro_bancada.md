@@ -108,3 +108,28 @@ flowchart LR
 3. Mantenha o `5V` e `GND` das duas placas no trilho da protoboard (com o Step-Down desligado) para que o USB da DevKit alimente a CAM.
 4. No VS Code, selecione **`env:esp32cam_hardware`** e clique em **`→` (Upload)** *(se pedir `Connecting...`, aperte 1 vez o botão `RST` atrás da ESP32-CAM)*.
 5. Ao terminar (`[SUCCESS]`), tire o cabo USB, **remova os jumpers `IO0`, `EN`, `TX0` e `RX0`** (deixando a CAM apenas com `5V` e `GND`) e grave novamente o `env:esp32_hardware` na DevKit V1.
+
+
+---
+
+## 6. Diagnóstico de Bancada: Step-Up 400W, Motores e Ponte H L298N
+
+Caso os motores apenas vibrem ou deem um tranco sem girar contínuo mesmo com `24V` chegando na Ponte H, siga os dois passos abaixo na ordem:
+
+### Passo 1: Ajustar a Corrente do Step-Up 400W (Trimpot `CC`)
+Os dois motores **GB37-520 (24V / 107 RPM)** consomem juntos `0,06 A` livres, `0,16 A` em carga normal e `0,72 A` no pico máximo travados (*stall*). Se o limitador de corrente (`CC`) do Step-Up vier fechado de fábrica, ele estrangula a partida.
+
+1. Com a chave geral **desligada**, localize os dois parafusos azuis (trimpots) do Step-Up 400W:
+   - **`CV`** (Tensão): já regulado em `24V` — **não mexer**.
+   - **`CC`** (Corrente): fica ao lado ou mais próximo da saída `OUT`.
+2. Gire o trimpot **`CC` de 10 a 15 voltas no sentido HORÁRIO** para abrir o limite de corrente (acima de `1,5 A` a `3,0 A` já atende com folga).
+3. Ligue o robô com as esteiras suspensas no ar e teste no painel (`W` ou `T`).
+4. *(Opcional — medição em série):* com o multímetro na escala `10A` DC ligado em série no fio `OUT+` (entre o Step-Up e a Ponte H), a leitura deve ficar entre `0,06 A` (livre) e até `0,72 A` no arranque.
+
+### Passo 2: Teste Direto Step-Up -> Motores (Isolamento da Ponte H)
+Se mesmo com o `CC` aberto os motores não girarem pela Ponte H:
+
+1. Solte os dois fios de **um** motor da Ponte H (`OUT1/OUT2` ou `OUT3/OUT4`).
+2. Encoste esses dois fios diretamente na saída **`OUT+` (24V)** e **`OUT-` (GND)** do Step-Up por **1 segundo**:
+   - **Se o motor girar liso e forte:** o motor e o Step-Up estão 100% operacionais; o defeito está na **Ponte H L298N** (chip danificado, solda fria ou mau contato lógico).
+   - **Se o motor não girar nem direto nos 24V:** o problema é travamento mecânico no próprio motor ou na caixa de redução.

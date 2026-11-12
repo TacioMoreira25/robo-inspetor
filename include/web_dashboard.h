@@ -807,7 +807,7 @@ function startContinuousSend() {
     if (!driveInterval) {
         driveInterval = setInterval(() => {
             if (joyX !== 0 || joyY !== 0) sendCmd(joyX, joyY);
-        }, 150);
+        }, 80);
     }
 }
 
@@ -889,10 +889,10 @@ function emergencyBrake() {
 function holdKey(k) {
     const el = document.getElementById('key_' + k);
     if (el) el.classList.add('pressed');
-    if (k === 'w') { joyX = 0; joyY = 200; }
-    else if (k === 's') { joyX = 0; joyY = -200; }
-    else if (k === 'a') { joyX = -180; joyY = 0; }
-    else if (k === 'd') { joyX = 180; joyY = 0; }
+    if (k === 'w') { joyX = 0; joyY = 255; }
+    else if (k === 's') { joyX = 0; joyY = -255; }
+    else if (k === 'a') { joyX = -255; joyY = 0; }
+    else if (k === 'd') { joyX = 255; joyY = 0; }
     drawJoystick(joyX / 255, joyY / 255);
     sendCmd(joyX, joyY);
     startContinuousSend();

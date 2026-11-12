@@ -48,7 +48,7 @@
 // 3. PARÂMETROS DE PWM E CONTROLE SUAVE DOS MOTORES (PONTE H L298N)
 // =============================================================================
 // Frequência de 1500 Hz ideal para os transistores BJT Darlington da L298N
-#define PWM_FREQ_HZ                 1500    // 1.5 kHz
+#define PWM_FREQ_HZ                 250     // 250 Hz (Maior torque e rendimento mecânico no L298N)
 #define PWM_RESOLUTION_BITS         8       // Escala de 8 bits: 0 (parado) até 255 (100%)
 
 // Canais internos independentes do periférico LEDC da ESP32
@@ -59,14 +59,14 @@
 #define PWM_CH_HEADLIGHT            4       // Canal PWM para GPIO 25 (TRIG/PWM do MOSFET XY-MOS)
 
 // Rampa de Aceleração (Slew Rate Limiter) e Zona Morta (Deadband)
-#define MOTOR_RAMP_STEP             15      // Incremento suave de PWM a cada 20 ms
+#define MOTOR_RAMP_STEP             64      // Rampa rápida: atinge 100% de torque em 80ms
 #define MOTOR_RAMP_INTERVAL_MS      20      // Atualização da rampa a 50 Hz
 #define MOTOR_DEADBAND              35      // PWM mínimo para vencer o atrito das esteiras
 
 // =============================================================================
 // 4. TEMPORIZADORES E WATCHDOG FAILSAFE (CÃO DE GUARDA DE 1 SEGUNDO)
 // =============================================================================
-#define FAILSAFE_TIMEOUT_MS         1000    // 1000 ms (1 segundo) sem comando corta os motores
+#define FAILSAFE_TIMEOUT_MS         3000    // 1000 ms (1 segundo) sem comando corta os motores
 #define TELEMETRY_INTERVAL_MS       500     // Período de atualização de telemetria (500 ms)
 #define SENSOR_READ_INTERVAL_MS     100     // Leitura térmica I2C a 10 Hz (100 ms)
 #define SERIAL_BAUD_RATE            115200
