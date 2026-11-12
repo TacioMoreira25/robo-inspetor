@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+    <title>UGV Inspetor</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <!-- BARRA SUPERIOR DO CONSOLE -->
+    <header class="topbar">
+        <div class="brand">
+            <div class="brand-dot" id="conn_dot"></div>
+            <span class="brand-title">UGV INSPETOR</span>
+            <span class="brand-sub">MASTER 192.168.4.1</span>
+        </div>
+        <div class="top-metrics">
+            <div class="pill">
+                <span class="pill-label">LINK:</span>
+                <span class="pill-val" id="link">--</span>
+            </div>
+            <div class="pill">
+                <span class="pill-label">LATÊNCIA:</span>
+                <span class="pill-val" id="lat">-- ms</span>
+            </div>
+            <div class="pill">
+                <span class="pill-label">UPTIME:</span>
+                <span class="pill-val" id="upt">00:00:00</span>
+            </div>
+            <div class="pill">
+                <span class="pill-label">REDE WI-FI:</span>
+                <span class="pill-val">ROBO_INSPETOR_UGV</span>
+            </div>
+            <div class="pill">
+                <span class="pill-label">DISPOSITIVOS:</span>
+                <span class="pill-val" id="wcli">0</span>
+            </div>
+            <div class="pill">
+                <span class="pill-label">WATCHDOG (1S):</span>
+                <span class="pill-val status-ok" id="wd">STANDBY</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- PALCO CENTRAL DE VÍDEO + OVERLAYS HUD NOS 4 CANTOS -->
+    <main class="cockpit">
+
+        <!-- CÂMERA CENTRAL EM DESTAQUE -->
+        <div class="camera-stage">
+            <div class="camera-placeholder">
+                <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5">
+                    <path d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <div>STREAMING ÓPTICO OV2640 (ESP32-CAM SLAVE)</div>
+                <div style="font-size:11px;color:#64748b;">Endpoint: http://192.168.4.2:81/stream</div>
+                <button class="btn-reconnect-cam" onclick="reloadCamera()">Reconectar Vídeo</button>
+            </div>
+
+            <img id="cam_stream" class="camera-feed" src="http://192.168.4.2:81/stream" alt="" onload="onCamLoad()" onerror="onCamError()">
+
+            <!-- Mira Tática Central -->
+            <svg class="hud-crosshair" viewBox="0 0 100 100">
+                <circle cx="50" cy="50" r="28" stroke="#00f0ff" stroke-width="0.8" fill="none" stroke-dasharray="4 4"/>
+                <line x1="50" y1="10" x2="50" y2="32" stroke="#00f0ff" stroke-width="1"/>
+                <line x1="50" y1="68" x2="50" y2="90" stroke="#00f0ff" stroke-width="1"/>
+                <line x1="10" y1="50" x2="32" y2="50" stroke="#00f0ff" stroke-width="1"/>
+                <line x1="68" y1="50" x2="90" y2="50" stroke="#00f0ff" stroke-width="1"/>
+                <circle cx="50" cy="50" r="2" fill="#00f0ff"/>
+            </svg>
+        </div>
+
+        <!-- CANTO SUPERIOR ESQUERDO: MINI-TELA DE TERMOGRAFIA MLX90614 -->
+        <section class="hud-card hud-thermal">
+            <div class="hud-header">
+                <span>TERMOGRAFIA IR</span>
+                <span id="i2c_ok" class="status-warn">AGUARDANDO</span>
+            </div>
+            <div class="temp-main-row">
+                <span class="temp-obj-label">ALVO (OBJETO)</span>
+                <div><span id="to" class="temp-obj-val">--.-</span> <span style="font-family:var(--font-mono);font-size:14px;color:var(--text-muted);">°C</span></div>
+            </div>
+            <div class="temp-bar-track">
+                <div id="temp_bar" class="temp-bar-fill"></div>
+            </div>
+            <div class="temp-sub-grid">
+                <div class="sub-item">
+                    <span>AMBIENTE (CHASSI)</span>
+                    <strong><span id="ta">--.-</span> °C</strong>
+                </div>
+                <div class="sub-item">
+                    <span>STATUS TÉRMICO</span>
+                    <strong id="ts" class="status-ok">NORMAL</strong>
+                </div>
+            </div>
+        </section>
+
+        <!-- CANTO SUPERIOR DIREITO: DIAGNÓSTICO DE TRAÇÃO E PONTE H -->
+        <section class="hud-card hud-traction">
+            <div class="hud-header">
+                <span>TRAÇÃO L298N</span>
+                <span id="mpwm" style="color:var(--text-main);">E:0 | D:0</span>
+            </div>
+            <div class="motor-gauge">
+                <div class="motor-gauge-head">
+                    <span style="color:var(--text-muted);">ESTEIRA ESQ (GPIO 26/27)</span>
+                    <span id="lbl_mL">0</span>
+                </div>
+                <div class="motor-bar-bg">
+                    <div id="bar_mL" class="motor-bar-fill"></div>
+                </div>
+            </div>
+            <div class="motor-gauge" style="margin-bottom:0;">
+                <div class="motor-gauge-head">
+                    <span style="color:var(--text-muted);">ESTEIRA DIR (GPIO 14/13)</span>
+                    <span id="lbl_mR">0</span>
+                </div>
+                <div class="motor-bar-bg">
+                    <div id="bar_mR" class="motor-bar-fill"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- CANTO INFERIOR ESQUERDO: TECLADO WASD + FARÓIS + AUTO-TESTE -->
+        <section class="hud-card hud-controls-left">
+            <div class="hud-header">
+                <span>COMANDOS</span>
+                <span class="hdr-tag">TECLADO</span>
+            </div>
+
+            <div class="wasd-container">
+                <div class="wasd-grid">
+                    <div class="key-cap key-w" id="key_w" onpointerdown="holdKey('w')" onpointerup="releaseKey('w')">W</div>
+                    <div class="key-cap key-a" id="key_a" onpointerdown="holdKey('a')" onpointerup="releaseKey('a')">A</div>
+                    <div class="key-cap key-s" id="key_s" onpointerdown="holdKey('s')" onpointerup="releaseKey('s')">S</div>
+                    <div class="key-cap key-d" id="key_d" onpointerdown="holdKey('d')" onpointerup="releaseKey('d')">D</div>
+                </div>
+
+                <div class="quick-actions">
+                    <button class="btn-tactical btn-stop" id="key_space" onclick="emergencyBrake()">
+                        <span>FREIO TOTAL</span>
+                        <span>[ESPAÇO]</span>
+                    </button>
+                    <button class="btn-tactical" id="btn_test" onclick="runBenchTest()">
+                        <span>AUTO-TESTE BANCADA</span>
+                        <span>[T]</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="light-control">
+                <button class="btn-tactical" id="btn_light" onclick="toggleLight()">
+                    <span>FARÓIS OLHO DE ÁGUIA (MOSFET)</span>
+                    <span id="light_pct">OFF [L]</span>
+                </button>
+                <div class="light-row">
+                    <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);">PWM</span>
+                    <input id="rng_light" type="range" min="0" max="255" value="0" oninput="setLight(this.value)">
+                </div>
+            </div>
+        </section>
+
+        <!-- CANTO INFERIOR DIREITO: JOYSTICK VIRTUAL TÁTICO -->
+        <section class="hud-card hud-joystick">
+            <div class="hud-header">
+                <span>JOYSTICK</span>
+                <span class="hdr-tag">PROPORCIONAL</span>
+            </div>
+            <canvas id="joy" width="170" height="170"></canvas>
+            <div class="joy-coords">
+                <span>EIXO X: <strong id="jx" style="color:var(--text-main);">0</strong></span>
+                <span>EIXO Y: <strong id="jy" style="color:var(--text-main);">0</strong></span>
+            </div>
+        </section>
+
+    </main>
+
+    <div id="link_lost" class="link-lost">CONEXÃO PERDIDA COM O ROBÔ — WATCHDOG ACIONARÁ O FREIO</div>
+    <script src="app.js"></script>
+</body>
+</html>

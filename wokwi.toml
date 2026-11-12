@@ -1,8 +1,16 @@
+# =============================================================================
+# ARQUIVO EXCLUSIVO DE SIMULAÇÃO (WOKWI SIMULATOR)
+# =============================================================================
+# Este arquivo NÃO é gravado nas placas ESP32 reais.
+# Ele serve apenas como registro de simulação para que o plugin do Wokwi no VS Code
+# saiba onde buscar o binário compilado (.elf) e o sensor térmico virtual (.wasm).
+
 [wokwi]
 version = 1
 firmware = ".pio/build/wokwi/firmware.elf"
 elf = ".pio/build/wokwi/firmware.elf"
 
+# Conecta o chip virtual do sensor infravermelho MLX90614 (GY-906) ao simulador
 [[chip]]
 name = "gy906"
-binary = "chips/gy906/gy906.wasm"
+binary = "simulacao_sensor_termico/gy906/gy906.wasm"

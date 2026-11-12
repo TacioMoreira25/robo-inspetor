@@ -1,111 +1,110 @@
-# 03. Roteiro de Bancada: Ligações Lógicas e Montagem Passo a Passo
+# 03. Roteiro de Bancada: Barramentos da Protoboard, Pinagem e Gravação
 
-Guia direto para fiação lógica da **ESP32 DevKit V1 (Master)** e isolamento da **ESP32-CAM (Slave)** na bancada.
+Guia direto com a fiação oficial dos trilhos da protoboard, cores exatas dos jumpers na **ESP32 DevKit V1 (Master)**, isolamento da **ESP32-CAM (Slave)** e procedimento de gravação.
 
 ---
 
-## 1. Diagrama Lógico de Pinos e Sinais
+## 1. Diagrama Lógico de Pinos e Cores dos Fios
 
 ```mermaid
 flowchart LR
-    subgraph SLAVE["ESP32-CAM (Slave — Proa)"]
-        CAM["ESP32-CAM<br/>IP: 192.168.4.2:81<br/>(Apenas 5V e GND)"]
+    subgraph SLAVE["ESP32-CAM (Slave — Na Proa)"]
+        CAM["ESP32-CAM<br/>• 5V -> Trilho Vermelho (+)<br/>• GND -> Trilho Azul (-)<br/>• GPIOs 12,13,14,15,U0T,U0R Livres"]
     end
 
-    subgraph MASTER["ESP32 DevKit V1 (Master — Centro de Controle)"]
-        DEV["ESP32 DevKit V1<br/>Wi-Fi: ROBO_INSPETOR_UGV<br/>IP: 192.168.4.1"]
+    subgraph MASTER["ESP32 DevKit V1 (Master)"]
+        DEV["ESP32 DevKit V1<br/>• VIN/5V: Branco/Vermelho -> Trilho (+)<br/>• GND: Preto e Branco -> Trilho (-)"]
     end
 
-    subgraph PERIFERICOS["Módulos Controlados pela Master"]
-        L298N["Ponte H L298N<br/>(Jumpers ENA e ENB fechados)<br/>(Jumper 5V removido)"]
-        MLX["Sensor Térmico MLX90614<br/>(Pull-ups 4.7kΩ p/ 3V3)"]
-        MOS["Módulo MOSFET Duplo<br/>(Faróis Olho de Águia 12V)"]
+    subgraph DESTINOS["Módulos e Sensores no Chassi"]
+        L298N["Ponte H L298N<br/>(ENA e ENB fechados | Sem Jumper 5V)"]
+        MOS["Módulo MOSFET XY-MOS V921<br/>(OUT+ e OUT- nos 2 Faróis 12V)"]
+        MLX["Sensor Térmico MLX90614<br/>(GND: Fio Azul -> Trilho -)"]
     end
 
-    CAM -.->|"U0T -> GPIO 16 (RX2)<br/>U0R -> GPIO 17 (TX2)<br/>(Reserva Física Opcional)"| DEV
+    DEV -->|"GPIO 26 (Fio Cinza)"| L298N_1["L298N: IN 1 (Motor Esq. A)"]
+    DEV -->|"GPIO 27 (Fio Azul)"| L298N_2["L298N: IN 2 (Motor Esq. B)"]
+    DEV -->|"GPIO 14 (Fio Amarelo)"| L298N_3["L298N: IN 3 (Motor Dir. A)"]
+    DEV -->|"GPIO 13 (Fio Verde)"| L298N_4["L298N: IN 4 (Motor Dir. B)"]
 
-    DEV -->|"GPIO 26 (PWM)"| L298N_IN1["L298N: IN 1 (Motor Esq A)"]
-    DEV -->|"GPIO 27 (PWM)"| L298N_IN2["L298N: IN 2 (Motor Esq B)"]
-    DEV -->|"GPIO 14 (PWM)"| L298N_IN3["L298N: IN 3 (Motor Dir A)"]
-    DEV -->|"GPIO 13 (PWM)"| L298N_IN4["L298N: IN 4 (Motor Dir B)"]
+    DEV -->|"GPIO 25 (Fio Cinza avulso)"| MOS_PWM["MOSFET XY-MOS: Furo TRIG/PWM"]
 
-    DEV -->|"3V3"| MLX_VIN["MLX90614: VIN (3.3V)"]
-    DEV <-->|"GPIO 21 (SDA)"| MLX_SDA["MLX90614: SDA"]
-    DEV -->|"GPIO 22 (SCL)"| MLX_SCL["MLX90614: SCL"]
-
-    DEV -->|"GPIO 25 (PWM)"| MOS_SIG["MOSFET: SIG / PWM"]
+    DEV -->|"3V3 (Fio Laranja)"| MLX_VIN["MLX90614: VIN + 2x Resistores 4.7kΩ"]
+    DEV <-->|"GPIO 21 (Fio Amarelo)"| MLX_SDA["MLX90614: SDA (c/ Pull-up 4.7kΩ)"]
+    DEV -->|"GPIO 22 (Fio Verde)"| MLX_SCL["MLX90614: SCL (c/ Pull-up 4.7kΩ)"]
 ```
 
 ---
 
-## 2. Passo a Passo das Alterações Físicas no Chassi
+## 2. Ligações nos Trilhos da Protoboard
 
-### Passo 1 — Isolar a ESP32-CAM na Proa (Limpeza de Fios)
-1. Solte da **ESP32-CAM** os 4 fios que iam para a Ponte H (`GPIO 12, 13, 14 e 15`).
-2. Deixe na **ESP32-CAM** apenas os fios de alimentação **`5V`** e **`GND`** vindos da protoboard.
-3. *(Opcional)* Os 2 fios seriais (`U0T` e `U0R` ligados em `GPIO 16` e `GPIO 17` da DevKit) podem permanecer passados no chassi como reserva física.
+### A. Trilho Vermelho (`+` 5V)
+* **Entrada:** Fio vindo do `OUT+` (5V) do Step-Down LM2596 *(o segundo fio do `OUT+` do Step-Down vai direto ao borne `5V` da Ponte H L298N)*.
+* **Saídas no Trilho Vermelho (`+`):**
+  1. **Capacitor Eletrolítico** (perna positiva).
+  2. **Jumper `VIN/5V` da ESP32 DevKit V1** (fio Branco/Vermelho — **retirar este fio ao gravar via cabo USB**).
+  3. **Fio `5V` da ESP32-CAM**.
 
-### Passo 2 — Ligar a Ponte H L298N na ESP32 DevKit V1
-1. Mantenha os jumpers **`ENA`** e **`ENB`** **fechados** na placa L298N.
-2. Confirme que o **jumper regulador de 5V** da placa L298N está **removido**.
-3. Conecte os 4 fios de comando da L298N na **ESP32 DevKit V1**:
-   - **`IN 1`** da L298N -> **`GPIO 26`** da ESP32 DevKit V1.
-   - **`IN 2`** da L298N -> **`GPIO 27`** da ESP32 DevKit V1.
-   - **`IN 3`** da L298N -> **`GPIO 14`** da ESP32 DevKit V1.
-   - **`IN 4`** da L298N -> **`GPIO 13`** da ESP32 DevKit V1.
-
-### Passo 3 — Ligar o Sensor Térmico (MLX90614) e os Faróis (Módulo MOSFET)
-1. **Sensor Térmico MLX90614:**
-   - Pino **`VIN`** -> Pino **`3V3`** da ESP32 DevKit V1.
-   - Pino **`GND`** -> Barramento **`-` (GND)** da protoboard.
-   - Pino **`SDA`** -> **`GPIO 21`** da ESP32 DevKit V1 *(com resistor pull-up de `4,7 kΩ` ligado ao `3V3`)*.
-   - Pino **`SCL`** -> **`GPIO 22`** da ESP32 DevKit V1 *(com resistor pull-up de `4,7 kΩ` ligado ao `3V3`)*.
-2. **Módulo MOSFET Duplo (Faróis 12V):**
-   - Fios negativos dos dois Faróis 12V -> Borne **`OUT-`** do Módulo MOSFET.
-   - Pino **`SIG / PWM`** do Módulo MOSFET -> **`GPIO 25`** da ESP32 DevKit V1.
-   - Pino **`GND` lógico** do Módulo MOSFET -> Barramento **`-` (GND)** da protoboard.
+### B. Trilho Azul (`-` GND Geral)
+* **Entrada:** Fio vindo do `OUT-` do Step-Down LM2596 (unificando o terra da bateria com a protoboard).
+* **Saídas no Trilho Azul (`-`):**
+  1. **Capacitor Eletrolítico** (lado da faixa negativa).
+  2. **`GND` da ESP32 DevKit V1** (fio Preto e Branco).
+  3. **`GND` da ESP32-CAM**.
+  4. **`GND` do Sensor MLX90614** (fio Azul).
+  5. **Fio de `GND` da Ponte H L298N** (junto ao `OUT-` do Step-Up).
+  6. **Furo `GND` lógico do Módulo MOSFET (`XY-MOS V921`)**.
+  7. **Fio Preto do Cooler / Fan 80mm (12V)**.
+  8. **Fio Preto do Voltímetro Digital (3 Fios)**.
 
 ---
 
-## 3. Tabela Definitiva de Pinagem (ESP32 DevKit V1 — Master)
+## 3. Tabela Oficial de Pinos e Cores da ESP32 DevKit V1 (Master)
 
-| Pino ESP32 DevKit V1 | Conectado Onde? | Função no Robô |
-| :--- | :--- | :--- |
-| **`VIN` (ou `5V`)** | Barramento **`+`** da Protoboard (5V) | Alimentação 5V vinda do Step-Down LM2596 |
-| **`GND`** | Barramento **`-`** da Protoboard (GND) | Referência de terra comum (0V) |
-| **`3V3`** | Pino **`VIN`** do Sensor MLX90614 | Alimentação 3,3V dedicada ao sensor térmico |
-| **`GPIO 26`** | Pino **`IN 1`** da Ponte H L298N | Motor Esquerdo — Sentido A / PWM |
-| **`GPIO 27`** | Pino **`IN 2`** da Ponte H L298N | Motor Esquerdo — Sentido B / PWM |
-| **`GPIO 14`** | Pino **`IN 3`** da Ponte H L298N | Motor Direito — Sentido A / PWM |
-| **`GPIO 13`** | Pino **`IN 4`** da Ponte H L298N | Motor Direito — Sentido B / PWM |
-| **`GPIO 21`** | Pino **`SDA`** do Sensor MLX90614 | Dados I2C da temperatura |
-| **`GPIO 22`** | Pino **`SCL`** do Sensor MLX90614 | Clock I2C da temperatura |
-| **`GPIO 25`** | Pino **`SIG / PWM`** do Módulo MOSFET | Controle dos Faróis Olho de Águia 12V |
-| **`GPIO 16` (`RX2`)** | Pino **`U0T`** da ESP32-CAM *(Opcional)* | Reserva física no chassi |
-| **`GPIO 17` (`TX2`)** | Pino **`U0R`** da ESP32-CAM *(Opcional)* | Reserva física no chassi |
+| Pino na ESP32 DevKit V1 | Constante no Código (`config.h`) | Cor do Jumper Físico | Onde está Conectado (Destino) | Função no Sistema |
+| --- | --- | --- | --- | --- |
+| **`GPIO 26`** | `PIN_MOTOR_LEFT_IN1` | **Cinza** | Pino **`IN 1`** da Ponte H L298N | PWM Motor Esquerdo Sentido A (Canal LEDC 0) |
+| **`GPIO 27`** | `PIN_MOTOR_LEFT_IN2` | **Azul** | Pino **`IN 2`** da Ponte H L298N | PWM Motor Esquerdo Sentido B (Canal LEDC 1) |
+| **`GPIO 14`** | `PIN_MOTOR_RIGHT_IN3` | **Amarelo** | Pino **`IN 3`** da Ponte H L298N | PWM Motor Direito Sentido A (Canal LEDC 2) |
+| **`GPIO 13`** | `PIN_MOTOR_RIGHT_IN4` | **Verde** | Pino **`IN 4`** da Ponte H L298N | PWM Motor Direito Sentido B (Canal LEDC 3) |
+| **`GPIO 25`** | `PIN_HEADLIGHT_MOSFET` | **Cinza** (avulso) | Furo **`TRIG/PWM`** do Módulo MOSFET (`XY-MOS`) | Controle PWM/Digital dos Faróis Olho de Águia (Canal LEDC 4) |
+| **`GPIO 21` (`SDA`)** | `PIN_I2C_SDA` | **Amarelo** | Pino **`SDA`** do Sensor MLX90614 | Dados I2C + Resistor pull-up de `4.7kΩ` ligado ao `3V3` |
+| **`GPIO 22` (`SCL`)** | `PIN_I2C_SCL` | **Verde** | Pino **`SCL`** do Sensor MLX90614 | Clock I2C + Resistor pull-up de `4.7kΩ` ligado ao `3V3` |
+| **`3V3`** | — | **Laranja** | Pino **`VIN`** do Sensor MLX90614 | Alimenta o sensor em 3.3V e os 2 resistores de `4.7kΩ` |
+| **`VIN` (ou `5V`)** | — | **Branco / Vermelho** | **Trilho Vermelho (`+` 5V)** da Protoboard | Entrada de 5V da placa (retirar ao gravar via cabo USB) |
+| **`GND`** | — | **Preto e Branco** | **Trilho Azul (`-` GND)** da Protoboard | Terra comum de referência (0V) |
 
 ---
 
-## 4. Passo a Passo para Gravar as Placas
+## 4. Ligações da ESP32-CAM (Slave — Na Proa)
 
-Você pode gravar as placas usando a **Arduino IDE** (pelos 2 sketches prontos) ou o **PlatformIO**:
+* **Pino `5V`:** Conectado ao **Trilho Vermelho (`+` 5V)** da Protoboard.
+* **Pino `GND`:** Conectado ao **Trilho Azul (`-` GND)** da Protoboard.
+* **Pinos `GPIO 12, 13, 14, 15, U0T, U0R`:** Totalmente livres/desconectados.
 
-### Opção 1 — Pela Arduino IDE (Direto pelos Sketches `.ino`)
-1. **Gravar a ESP32 DevKit V1 (Master):**
-   - Abra [`arduino_sketches/esp32_devkit_master/esp32_devkit_master.ino`](file:///home/tacio/dev/academic/robo-inspetor/arduino_sketches/esp32_devkit_master/esp32_devkit_master.ino).
-   - *(Não precisa alterar Wi-Fi: ela já cria a rede própria `ROBO_INSPETOR_UGV` com senha `12345678` e IP `192.168.4.1`).*
-   - Selecione a placa **DOIT ESP32 DEVKIT V1** e clique em **Upload**.
-2. **Gravar a ESP32-CAM (Slave):**
-   - Abra [`arduino_sketches/esp32_cam_stream/esp32_cam_stream.ino`](file:///home/tacio/dev/academic/robo-inspetor/arduino_sketches/esp32_cam_stream/esp32_cam_stream.ino).
-   - *(Não precisa alterar Wi-Fi: ela já conecta automaticamente na rede `ROBO_INSPETOR_UGV` com IP `192.168.4.2`).*
-   - Selecione a placa **AI Thinker ESP32-CAM** e clique em **Upload**.
+---
 
-### Opção 2 — Pelo PlatformIO (VS Code)
-1. **Gravar a ESP32 DevKit V1 (Master):**
-   ```bash
-   pio run -e esp32_hardware --target upload
-   ```
-2. **Gravar a ESP32-CAM (Slave):**
-   ```bash
-   pio run -e esp32cam_hardware --target upload
-   ```
+## 5. Passo a Passo para Gravar as Placas no VS Code (PlatformIO)
+
+### Placa 1 — Gravar a ESP32 DevKit V1 (Master)
+1. **Desligue a chave geral da bateria** e **retire o jumper `VIN/5V` (Branco/Vermelho)** da ESP32 DevKit V1 antes de plugar o cabo USB.
+2. Plugue o cabo USB na **ESP32 DevKit V1**.
+3. Na barra inferior do VS Code, selecione **`env:esp32_hardware`** e clique na setinha **`→` (Upload)**.
+4. Ao terminar (`[SUCCESS]`), tire o cabo USB e reconecte o jumper `VIN/5V` (Branco/Vermelho) no Trilho Vermelho (`+`) da protoboard.
+
+### Placa 2 — Gravar a ESP32-CAM SEM Adaptador (Usando a DevKit V1 como Ponte USB)
+> [!IMPORTANT]
+> **REGRA DE OURO DO GND COMUM (0V):**
+> Use o **Trilho Azul (`-`) da Protoboard** para reunir todos os terras durante a gravação:
+> - `GND` da DevKit -> Trilho Azul (`-`)
+> - `GND` da CAM -> Trilho Azul (`-`)
+> - Jumper do pino `EN` (DevKit) -> Trilho Azul (`-`)
+> - Jumper do pino `IO0` (CAM) -> Trilho Azul (`-`)
+
+1. Com a **bateria desligada**, espete um jumper do pino **`EN`** da DevKit V1 no **Trilho Azul (`-`)** e outro jumper do pino **`IO0`** da ESP32-CAM no **Trilho Azul (`-`)**.
+2. Ligue temporariamente 2 fios de comunicação entre as placas:
+   - **`TX0` (`TX`)** da DevKit V1 -> **`U0T`** da ESP32-CAM.
+   - **`RX0` (`RX`)** da DevKit V1 -> **`U0R`** da ESP32-CAM.
+3. Mantenha o `5V` e `GND` das duas placas no trilho da protoboard (com o Step-Down desligado) para que o USB da DevKit alimente a CAM.
+4. No VS Code, selecione **`env:esp32cam_hardware`** e clique em **`→` (Upload)** *(se pedir `Connecting...`, aperte 1 vez o botão `RST` atrás da ESP32-CAM)*.
+5. Ao terminar (`[SUCCESS]`), tire o cabo USB, **remova os jumpers `IO0`, `EN`, `TX0` e `RX0`** (deixando a CAM apenas com `5V` e `GND`) e grave novamente o `env:esp32_hardware` na DevKit V1.

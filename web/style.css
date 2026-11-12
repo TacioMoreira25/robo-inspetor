@@ -1,0 +1,541 @@
+:root {
+    --bg-dark: #090c10;
+    --panel-bg: rgba(16, 22, 30, 0.84);
+    --panel-border: rgba(56, 189, 248, 0.22);
+    --accent: #00f0ff;
+    --accent-dim: rgba(0, 240, 255, 0.15);
+    --ok: #10b981;
+    --warn: #f59e0b;
+    --crit: #ef4444;
+    --text-main: #f1f5f9;
+    --text-muted: #94a3b8;
+    --font-ui: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Helvetica, sans-serif;
+    --font-mono: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
+
+body {
+    background-color: var(--bg-dark);
+    color: var(--text-main);
+    font-family: var(--font-ui);
+    height: 100vh;
+    width: 100vw;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+/* BARRA SUPERIOR DE STATUS (TOPBAR) */
+.topbar {
+    height: 48px;
+    background: rgba(11, 15, 22, 0.95);
+    border-bottom: 1px solid var(--panel-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 20px;
+    z-index: 20;
+    flex-shrink: 0;
+}
+
+.brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.brand-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--ok);
+    box-shadow: 0 0 10px var(--ok);
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
+.brand-title {
+    font-family: var(--font-mono);
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    color: var(--text-main);
+}
+
+.brand-sub {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--accent);
+    background: var(--accent-dim);
+    padding: 3px 8px;
+    border-radius: 4px;
+    border: 1px solid rgba(0, 240, 255, 0.3);
+}
+
+.top-metrics {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+}
+
+.pill {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 4px 10px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.pill-label { color: var(--text-muted); font-size: 10px; }
+.pill-val { font-weight: 700; color: var(--text-main); }
+
+/* VIEWPORT CENTRAL (CÂMERA EM TELA CHEIA + HUD FLUTUANTE) */
+.cockpit {
+    position: relative;
+    flex: 1;
+    width: 100%;
+    height: calc(100vh - 48px);
+    background: radial-gradient(circle at center, #131b26 0%, #070a0e 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+/* Grade tática sutil ao fundo da câmera */
+.cockpit::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image:
+        linear-gradient(rgba(0, 240, 255, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 240, 255, 0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+}
+
+/* MOLDURA CENTRAL DE VÍDEO */
+.camera-stage {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.camera-feed {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    z-index: 1;
+}
+
+.camera-placeholder {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    text-align: center;
+    z-index: 0;
+}
+
+.camera-placeholder svg {
+    width: 48px;
+    height: 48px;
+    stroke: var(--accent);
+    opacity: 0.5;
+}
+
+.btn-reconnect-cam {
+    margin-top: 6px;
+    background: rgba(0, 240, 255, 0.1);
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    z-index: 5;
+}
+.btn-reconnect-cam:hover { background: var(--accent); color: #000; }
+
+/* Mira Central HUD (Crosshair) */
+.hud-crosshair {
+    position: absolute;
+    width: 120px;
+    height: 120px;
+    pointer-events: none;
+    z-index: 2;
+    opacity: 0.45;
+}
+
+/* PAINÉIS FLUTUANTES NOS CANTOS (HUD OVERLAYS) */
+.hud-card {
+    position: absolute;
+    background: var(--panel-bg);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    z-index: 10;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
+}
+
+.hud-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    padding-bottom: 8px;
+    margin-bottom: 10px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: var(--accent);
+    text-transform: uppercase;
+}
+
+/* CANTO SUPERIOR ESQUERDO: MINI-PAINEL DE TERMOGRAFIA */
+.hud-thermal {
+    top: 16px;
+    left: 16px;
+    width: 260px;
+}
+
+.temp-main-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 6px;
+}
+
+.temp-obj-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+}
+
+.temp-obj-val {
+    font-family: var(--font-mono);
+    font-size: 32px;
+    font-weight: 800;
+    color: var(--text-main);
+    line-height: 1;
+}
+
+.temp-bar-track {
+    width: 100%;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 3px;
+    overflow: hidden;
+    margin: 8px 0 10px 0;
+}
+
+.temp-bar-fill {
+    height: 100%;
+    width: 25%;
+    background: var(--ok);
+    transition: width 0.25s ease, background-color 0.25s ease;
+}
+
+.temp-sub-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding-top: 6px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.sub-item span { display: block; color: var(--text-muted); font-size: 10px; }
+.sub-item strong { color: var(--text-main); font-size: 13px; }
+
+/* CANTO SUPERIOR DIREITO: TELEMETRIA DE TRAÇÃO & SISTEMA */
+.hud-traction {
+    top: 16px;
+    right: 16px;
+    width: 250px;
+}
+
+.motor-gauge {
+    margin-bottom: 8px;
+}
+
+.motor-gauge-head {
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    margin-bottom: 4px;
+}
+
+.motor-bar-bg {
+    height: 7px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.motor-bar-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--accent);
+    transition: width 0.15s ease;
+}
+
+/* CANTO INFERIOR ESQUERDO: TECLADO WASD + FARÓIS + AUTO-TESTE */
+.hud-controls-left {
+    bottom: 16px;
+    left: 16px;
+    width: 310px;
+}
+
+.wasd-container {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.wasd-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 38px);
+    grid-template-rows: repeat(2, 36px);
+    gap: 5px;
+}
+
+.key-cap {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-bottom: 3px solid rgba(255, 255, 255, 0.25);
+    border-radius: 6px;
+    color: var(--text-main);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.08s ease;
+}
+
+.key-cap:active, .key-cap.pressed {
+    background: var(--accent);
+    color: #000;
+    border-color: var(--accent);
+    transform: translateY(2px);
+    box-shadow: 0 0 12px rgba(0, 240, 255, 0.5);
+}
+
+.key-w { grid-column: 2; grid-row: 1; }
+.key-a { grid-column: 1; grid-row: 2; }
+.key-s { grid-column: 2; grid-row: 2; }
+.key-d { grid-column: 3; grid-row: 2; }
+
+.quick-actions {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.btn-tactical {
+    width: 100%;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: var(--text-main);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 8px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    transition: all 0.15s ease;
+}
+
+.btn-tactical:hover {
+    border-color: var(--accent);
+    background: rgba(0, 240, 255, 0.1);
+}
+
+.btn-tactical.active {
+    background: var(--ok);
+    color: #051b11;
+    border-color: var(--ok);
+    box-shadow: 0 0 14px rgba(16, 185, 129, 0.45);
+}
+
+.btn-stop {
+    background: rgba(239, 68, 68, 0.14);
+    border-color: rgba(239, 68, 68, 0.4);
+    color: #fca5a5;
+}
+.btn-stop:active, .btn-stop.pressed {
+    background: var(--crit);
+    color: #fff;
+}
+
+.light-control {
+    padding-top: 10px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.light-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 6px;
+}
+
+input[type=range] {
+    -webkit-appearance: none;
+    appearance: none;
+    flex: 1;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 3px;
+    outline: none;
+}
+
+input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    box-shadow: 0 0 8px var(--accent);
+}
+
+/* CANTO INFERIOR DIREITO: JOYSTICK ANALÓGICO DE PRECISÃO */
+.hud-joystick {
+    bottom: 16px;
+    right: 16px;
+    width: 240px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.hud-joystick .hud-header { width: 100%; }
+
+canvas#joy {
+    background: radial-gradient(circle, rgba(0, 240, 255, 0.06) 0%, rgba(10, 14, 20, 0.9) 100%);
+    border: 1px solid rgba(0, 240, 255, 0.3);
+    border-radius: 50%;
+    touch-action: none;
+    cursor: grab;
+}
+canvas#joy:active { cursor: grabbing; }
+
+.joy-coords {
+    margin-top: 8px;
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.status-ok { color: var(--ok) !important; }
+.status-warn { color: var(--warn) !important; }
+.status-crit { color: var(--crit) !important; }
+
+/* RESPONSIVIDADE PARA CELULAR / TELAS MENORES */
+@media (max-width: 900px) {
+    body { overflow-y: auto; height: auto; }
+    .cockpit {
+        flex-direction: column;
+        height: auto;
+        padding: 12px;
+        gap: 12px;
+    }
+    .camera-stage {
+        height: 260px;
+        border: 1px solid var(--panel-border);
+        border-radius: 8px;
+        overflow: hidden;
+        background: #000;
+    }
+    .hud-card {
+        position: static;
+        width: 100%;
+    }
+    .top-metrics { display: none; }
+}
+
+/* Telemetria de enlace e correções de quebra de linha nos cabeçalhos */
+.pill, .pill-val, .pill-label { white-space: nowrap; }
+.hud-header, .hud-header * { white-space: nowrap; }
+.hud-panel { min-width: 260px; }
+.link-lost {
+    display: none; position: fixed; top: 64px; left: 50%; transform: translateX(-50%);
+    padding: 10px 22px; border: 1px solid var(--crit); border-radius: 6px;
+    background: rgba(239, 68, 68, 0.18); color: var(--crit);
+    font-family: var(--font-mono); font-size: 13px; letter-spacing: 1px; z-index: 50;
+    animation: blink 1s steps(2) infinite;
+}
+.link-lost.show { display: block; }
+@keyframes blink { 50% { opacity: 0.45; } }
+
+/* ---------------------------------------------------------------------------
+ * AJUSTES DE LAYOUT (espaçamento dos cabeçalhos, larguras e estado do vídeo)
+ * ------------------------------------------------------------------------- */
+.hud-header { gap: 12px; }
+.hud-header > span:last-child { flex-shrink: 0; }
+.hdr-tag { color: var(--text-muted); font-weight: 500; }
+
+.hud-thermal, .hud-traction, .hud-controls-left { width: 290px; }
+.hud-joystick { width: 260px; }
+
+/* Leitura de temperatura: remove fundo/brilho herdado indevidamente */
+.temp-obj-val {
+    background: none;
+    box-shadow: none;
+    cursor: default;
+    font-size: 30px;
+    letter-spacing: 0;
+    font-variant-numeric: tabular-nums;
+}
+.sub-item strong { white-space: nowrap; }
+
+/* Vídeo: imagem e mira só aparecem quando o stream está ativo */
+.camera-feed { display: none; }
+.camera-stage.live .camera-feed { display: block; }
+.camera-stage.live .camera-placeholder { display: none; }
+.hud-crosshair { display: none; }
+.camera-stage.live .hud-crosshair { display: block; }
+
+/* Aviso de perda de conexão com maior contraste */
+.link-lost {
+    top: 76px; /* abaixo da barra superior, entre os painéis do topo */
+    color: #fee2e2;
+    background: rgba(127, 29, 29, 0.85);
+    font-weight: 700;
+}

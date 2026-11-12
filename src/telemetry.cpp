@@ -1,5 +1,18 @@
+/*
+ * =============================================================================
+ * SERVIDOR WEB MASTER, REDE WI-FI PRÓPRIA E STREAM SLAVE (telemetry.cpp)
+ * =============================================================================
+ * ARQUITETURA DO MÓDULO DE REDE E ROTAS HTTP:
+ * A interface gráfica (HTML/CSS/JS) encontra-se isolada em `web/index.html` e
+ * empacotada em memória Flash via `include/web_dashboard.h` (`PROGMEM`).
+ * Este módulo gerencia exclusivamente o ponto de acesso Wi-Fi, os parâmetros de
+ * rádio (`WiFi.setSleep(false)` e `WIFI_POWER_15dBm`) e o despacho das rotas
+ * HTTP (`/`, `/cmd`, `/temp`, `/test`, `/status` e `/stream`).
+ */
+
 #include "telemetry.h"
 #include "config.h"
+#include "web_dashboard.h"
 #include <WiFi.h>
 #include <WebServer.h>
 #include <ArduinoJson.h>
@@ -12,158 +25,7 @@ static CameraStream *g_camera = nullptr;
 static uint8_t g_headlight_val = 0;
 static RobotTelemetryState g_latest_state;
 
-static const char HTML_DASHBOARD[] PROGMEM = R"rawliteral(
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>Robô Inspetor UGV - ESP32 DevKit V1 Master</title>
-    <style>
-        body { font-family: monospace; background: #101216; color: #00ff66; padding: 15px; margin: 0; user-select: none; }
-        h1 { color: #ffffff; text-align: center; margin-bottom: 5px; font-size: 22px; }
-        .sub { text-align: center; color: #888; margin-bottom: 15px; font-size: 13px; }
-        .grid { display: flex; flex-wrap: wrap; gap: 18px; justify-content: center; }
-        .card { background: #1a1d24; border: 1px solid #333; padding: 15px; border-radius: 10px; width: 320px; box-sizing: border-box; }
-        .card h3 { margin-top: 0; color: #fff; border-bottom: 1px solid #333; padding-bottom: 8px; }
-        .video-box { width: 100%; height: 220px; background: #000; border: 1px solid #444; border-radius: 6px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-        .video-box img { width: 100%; height: 100%; object-fit: cover; }
-        .telemetry-val { font-size: 20px; font-weight: bold; color: #fff; }
-        .alert-warn { color: #ffcc00; font-weight: bold; }
-        .alert-crit { color: #ff3333; font-weight: bold; }
-        .joy-wrap { display: flex; flex-direction: column; align-items: center; margin-top: 8px; }
-        canvas { background: #121418; border: 2px solid #444; border-radius: 50%; touch-action: none; cursor: crosshair; }
-        .btn-row { display: flex; gap: 10px; margin-top: 10px; width: 100%; }
-        button { flex: 1; background: #282c34; color: #fff; border: 1px solid #555; padding: 12px; font-size: 14px; border-radius: 6px; cursor: pointer; font-family: monospace; }
-        button:active, button.active { background: #00ff66; color: #000; font-weight: bold; }
-    </style>
-</head>
-<body>
-    <h1>ROBO INSPETOR TERRESTRE (UGV)</h1>
-    <div class="sub">Wi-Fi: ROBO_INSPETOR_UGV | Master: 192.168.4.1 | Camera Slave: 192.168.4.2:81</div>
-    <div class="grid">
-        <div class="card">
-            <h3>Camera OV2640 (ESP32-CAM)</h3>
-            <div class="video-box">
-                <img id="cam_stream" src="http://192.168.4.2:81/stream" alt="Aguardando Stream 192.168.4.2:81...">
-            </div>
-        </div>
-        <div class="card">
-            <h3>Termografia (MLX90614 I2C)</h3>
-            <p>Temp. Objeto: <span id="to" class="telemetry-val">--</span> °C</p>
-            <p>Temp. Ambiente: <span id="ta" class="telemetry-val">--</span> °C</p>
-            <p>Status Termico: <span id="ts" class="telemetry-val">NORMAL</span></p>
-            <p>Failsafe (1s): <span id="wd" class="telemetry-val">OK</span></p>
-            <hr style="border:0;border-top:1px solid #333;margin:12px 0;">
-            <h3>Farois Olho de Aguia (GPIO 25)</h3>
-            <div class="btn-row">
-                <button id="btn_light" onclick="toggleLight()">Ligar / Desligar Farol (L)</button>
-            </div>
-            <input id="rng_light" type="range" min="0" max="255" value="0" style="width:100%;margin-top:10px;" oninput="setLight(this.value)">
-        </div>
-        <div class="card">
-            <h3>Joystick & Teclas (W,A,S,D)</h3>
-            <div class="joy-wrap">
-                <canvas id="joy" width="200" height="200"></canvas>
-                <p style="margin:8px 0 0 0;color:#aaa;font-size:12px;">X: <span id="jx">0</span> | Y: <span id="jy">0</span></p>
-            </div>
-        </div>
-    </div>
-    <script>
-        let lightOn = false;
-        const canvas = document.getElementById('joy');
-        const ctx = canvas.getContext('2d');
-        let dragging = false;
-        let joyX = 0, joyY = 0;
-
-        function drawJoystick(x, y) {
-            ctx.clearRect(0, 0, 200, 200);
-            ctx.strokeStyle = '#333';
-            ctx.beginPath(); ctx.moveTo(100, 0); ctx.lineTo(100, 200); ctx.moveTo(0, 100); ctx.lineTo(200, 100); ctx.stroke();
-            ctx.beginPath(); ctx.arc(100 + x * 0.7, 100 - y * 0.7, 25, 0, Math.PI * 2);
-            ctx.fillStyle = '#00ff66'; ctx.fill();
-        }
-        drawJoystick(0, 0);
-
-        function sendCmd(x, y, lightVal) {
-            document.getElementById('jx').innerText = x;
-            document.getElementById('jy').innerText = y;
-            let url = '/cmd?x=' + x + '&y=' + y;
-            if (lightVal !== undefined) url += '&light=' + lightVal;
-            fetch(url).catch(() => {});
-        }
-
-        function updatePos(clientX, clientY) {
-            const rect = canvas.getBoundingClientRect();
-            let dx = clientX - (rect.left + 100);
-            let dy = (rect.top + 100) - clientY;
-            let dist = Math.min(100, Math.hypot(dx, dy));
-            let angle = Math.atan2(dy, dx);
-            joyX = Math.round((dist * Math.cos(angle)) * 2.55);
-            joyY = Math.round((dist * Math.sin(angle)) * 2.55);
-            drawJoystick(joyX / 2.55, joyY / 2.55);
-            sendCmd(joyX, joyY);
-        }
-
-        canvas.addEventListener('pointerdown', e => { dragging = true; updatePos(e.clientX, e.clientY); });
-        window.addEventListener('pointermove', e => { if (dragging) updatePos(e.clientX, e.clientY); });
-        window.addEventListener('pointerup', () => {
-            if (dragging) { dragging = false; joyX = 0; joyY = 0; drawJoystick(0, 0); sendCmd(0, 0); }
-        });
-
-        function toggleLight() {
-            lightOn = !lightOn;
-            let val = lightOn ? 255 : 0;
-            document.getElementById('rng_light').value = val;
-            document.getElementById('btn_light').className = lightOn ? 'active' : '';
-            sendCmd(joyX, joyY, val);
-        }
-
-        function setLight(val) {
-            lightOn = (val > 0);
-            document.getElementById('btn_light').className = lightOn ? 'active' : '';
-            sendCmd(joyX, joyY, val);
-        }
-
-        window.addEventListener('keydown', e => {
-            if (e.repeat) return;
-            const k = e.key.toLowerCase();
-            if (k === 'w') { joyX = 0; joyY = 200; }
-            else if (k === 's') { joyX = 0; joyY = -200; }
-            else if (k === 'a') { joyX = -180; joyY = 0; }
-            else if (k === 'd') { joyX = 180; joyY = 0; }
-            else if (k === ' ') { joyX = 0; joyY = 0; }
-            else if (k === 'l') { toggleLight(); return; }
-            else return;
-            drawJoystick(joyX / 2.55, joyY / 2.55);
-            sendCmd(joyX, joyY);
-        });
-
-        window.addEventListener('keyup', e => {
-            const k = e.key.toLowerCase();
-            if (['w', 'a', 's', 'd'].includes(k)) {
-                joyX = 0; joyY = 0; drawJoystick(0, 0); sendCmd(0, 0);
-            }
-        });
-
-        setInterval(() => {
-            fetch('/temp').then(r => r.json()).then(d => {
-                document.getElementById('to').innerText = d.obj.toFixed(1);
-                document.getElementById('ta').innerText = d.amb.toFixed(1);
-                let ts = document.getElementById('ts');
-                if (d.obj >= 70.0) { ts.innerText = "CRITICO (>=70C PARADA)"; ts.className = "telemetry-val alert-crit"; }
-                else if (d.obj >= 50.0) { ts.innerText = "ATENCAO (>=50C)"; ts.className = "telemetry-val alert-warn"; }
-                else { ts.innerText = "NORMAL"; ts.className = "telemetry-val"; }
-                let wd = document.getElementById('wd');
-                if (d.watchdog) { wd.innerText = "FAILSAFE (PARADO)"; wd.className = "telemetry-val alert-warn"; }
-                else { wd.innerText = "ATIVO"; wd.className = "telemetry-val"; }
-            }).catch(() => {});
-        }, 500);
-    </script>
-</body>
-</html>
-)rawliteral";
-
+// Configura a ESP32 DevKit V1 como Ponto de Acesso (SoftAP) com IP fixo 192.168.4.1
 static void setupMasterSoftAP(IPAddress local_ip) {
     IPAddress gateway(NETWORK_GATEWAY_ADDR);
     IPAddress subnet(NETWORK_SUBNET_MASK);
@@ -172,7 +34,7 @@ static void setupMasterSoftAP(IPAddress local_ip) {
     WiFi.softAPConfig(local_ip, gateway, subnet);
     WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASS, WIFI_AP_CHANNEL, 0, 4);
 
-    // Otimizações Anti-Lag e Anti-Ruído RF no chassi
+    // Otimizações Anti-Lag (desliga economia de energia do rádio) e Anti-Ruído RF no chassi
     WiFi.setSleep(false);
     WiFi.setTxPower(WIFI_POWER_15dBm);
 
@@ -197,12 +59,12 @@ void TelemetryServer::beginMaster(MotorController *motor_ctrl) {
 
     setupMasterSoftAP(IPAddress(MASTER_STATIC_IP_ADDR));
 
-    // Rota Principal do Dashboard
+    // Rota "/" -> Entrega o Painel Web (carregado de include/web_dashboard.h)
     server.on("/", HTTP_GET, []() {
         server.send(200, "text/html", FPSTR(HTML_DASHBOARD));
     });
 
-    // Rota /cmd -> Recebe eixos X e Y do Joystick e brilho do farol MOSFET (GPIO 25)
+    // Rota "/cmd" -> Recebe X e Y do Joystick e o brilho do farol MOSFET (GPIO 25)
     server.on("/cmd", HTTP_GET, []() {
         if (!g_motors) {
             server.send(500, "text/plain", "Erro Motores");
@@ -219,19 +81,51 @@ void TelemetryServer::beginMaster(MotorController *motor_ctrl) {
         server.send(200, "text/plain", "OK");
     });
 
-    // Rota /temp -> Retorna JSON simples {"obj": 34.5, "amb": 26.1} buscado a cada 500ms
+    // Rota "/temp" -> Consultada pelo navegador a cada 500ms para atualizar a tela
     server.on("/temp", HTTP_GET, []() {
-        StaticJsonDocument<192> doc;
+        StaticJsonDocument<256> doc;
+        doc["valid"] = g_latest_state.thermal.is_valid;
         doc["obj"] = g_latest_state.thermal.object_temperature;
         doc["amb"] = g_latest_state.thermal.ambient_temperature;
         doc["alert"] = g_latest_state.thermal_alert_level;
         doc["watchdog"] = g_latest_state.watchdog_alert;
+        doc["mL"] = g_latest_state.motor_left_speed;
+        doc["mR"] = g_latest_state.motor_right_speed;
+        doc["clients"] = g_latest_state.wifi_clients;
+        doc["uptime"] = millis();
         String out;
         serializeJson(doc, out);
         server.send(200, "application/json", out);
     });
 
-    // Rota /status -> Telemetria completa
+    // Rota "/test" -> Executa o Auto-Teste individual dos 4 pinos da Ponte H e Farol
+    server.on("/test", HTTP_GET, []() {
+        if (!g_motors) {
+            server.send(500, "text/plain", "Erro Motores");
+            return;
+        }
+        server.send(200, "text/plain", "Iniciando Auto-Teste de Bancada...");
+        Serial.println("\n================ [AUTO-TESTE DE BANCADA] ================");
+        Serial.println("[1/5] Testando Farois 12V no Modulo MOSFET (GPIO 25)...");
+        ledcWrite(PWM_CH_HEADLIGHT, 255);
+        delay(300);
+        ledcWrite(PWM_CH_HEADLIGHT, g_headlight_val);
+
+        Serial.println("[2/5] Pulso Motor ESQUERDO -> FRENTE (L298N IN1 = GPIO 26)...");
+        g_motors->pulseSinglePin(PWM_CH_LEFT_IN1, 160, 400);
+
+        Serial.println("[3/5] Pulso Motor ESQUERDO -> RE (L298N IN2 = GPIO 27)...");
+        g_motors->pulseSinglePin(PWM_CH_LEFT_IN2, 160, 400);
+
+        Serial.println("[4/5] Pulso Motor DIREITO -> FRENTE (L298N IN3 = GPIO 14)...");
+        g_motors->pulseSinglePin(PWM_CH_RIGHT_IN3, 160, 400);
+
+        Serial.println("[5/5] Pulso Motor DIREITO -> RE (L298N IN4 = GPIO 13)...");
+        g_motors->pulseSinglePin(PWM_CH_RIGHT_IN4, 160, 400);
+        Serial.println("================ [FIM DO AUTO-TESTE: MOTORES TRAVADOS EM 0] ================\n");
+    });
+
+    // Rota "/status" -> Retorna um pacote JSON completo para diagnóstico externo
     server.on("/status", HTTP_GET, []() {
         StaticJsonDocument<384> doc;
         doc["uptime"] = g_latest_state.uptime_ms;
@@ -256,6 +150,7 @@ void TelemetryServer::beginMaster(MotorController *motor_ctrl) {
     server.begin();
 }
 
+// Configura a ESP32-CAM Slave para conectar no Wi-Fi da Master e transmitir vídeo na porta 81
 void TelemetryServer::beginSlaveCam(CameraStream *cam_stream) {
     _cam_ref = cam_stream;
     g_camera = cam_stream;
@@ -268,7 +163,7 @@ void TelemetryServer::beginSlaveCam(CameraStream *cam_stream) {
     WiFi.config(local_ip, gateway, subnet);
     WiFi.begin(WIFI_AP_SSID, WIFI_AP_PASS);
 
-    // Otimizações Anti-Lag e Anti-Ruído RF no chassi
+    // Otimizações Anti-Lag e Anti-Ruído RF dentro do chassi
     WiFi.setSleep(false);
     WiFi.setTxPower(WIFI_POWER_15dBm);
 
@@ -277,6 +172,7 @@ void TelemetryServer::beginSlaveCam(CameraStream *cam_stream) {
         delay(100);
     }
 
+    // Rota "/stream" (Porta 81) -> Envia quadros JPEG seguidos (Multipart MJPEG)
     streamServer.on("/stream", HTTP_GET, []() {
         WiFiClient client = streamServer.client();
         client.println("HTTP/1.1 200 OK");
@@ -310,6 +206,14 @@ void TelemetryServer::updateMaster(const RobotTelemetryState &state) {
 }
 
 void TelemetryServer::updateSlaveCam() {
+    // Se a câmera perder conexão com a Master por qualquer motivo, reconecta sozinha
+    if (WiFi.status() != WL_CONNECTED) {
+        static uint32_t last_retry_ms = 0;
+        if (millis() - last_retry_ms > 3000) {
+            last_retry_ms = millis();
+            WiFi.reconnect();
+        }
+    }
     streamServer.handleClient();
 }
 

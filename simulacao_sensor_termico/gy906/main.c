@@ -1,8 +1,21 @@
+/*
+ * =============================================================================
+ * EMULADOR DO SENSOR TÉRMICO MLX90614 (GY-906) - AMBIENTE WOKWI
+ * =============================================================================
+ * DESCRIÇÃO E RACIONAL TÉCNICO:
+ * Implementação em C compilada para WebAssembly (gy906.wasm) destinada a emular
+ * o comportamento do sensor infravermelho MLX90614 no barramento I2C/SMBus
+ * (endereço 0x5A, pinos SDA 21 e SCL 22) durante a validação em simulador.
+ *
+ * NOTA: Arquivo exclusivo para registro e execução da simulação virtual; não é
+ * embarcado nas placas físicas ESP32.
+ */
+
 #include "wokwi-api.h"
 
-#define MLX90614_I2C_ADDR 0x5A
-#define REG_TA            0x06
-#define REG_TOBJ1         0x07
+#define MLX90614_I2C_ADDR 0x5A  // Endereço I2C padrão de fábrica do MLX90614
+#define REG_TA            0x06  // Registrador de RAM da Temperatura Ambiente
+#define REG_TOBJ1         0x07  // Registrador de RAM da Temperatura do Objeto (Alvo)
 
 typedef struct {
     pin_t pin_scl;
@@ -16,21 +29,25 @@ typedef struct {
 
 static chip_state_t g_chip;
 
+// Converte graus Celsius escolhidos no slider do simulador para o formato bruto
+// de 16 bits do sensor real: Valor Bruto = (Celsius + 273.15) * 50
 static uint16_t celsius_to_raw(float celsius) {
     float kelvin = celsius + 273.15f;
     if (kelvin < 0.0f) kelvin = 0.0f;
     return (uint16_t)(kelvin * 50.0f);
 }
 
+// Chamado quando a ESP32 simulada inicia comunicação I2C no endereço 0x5A
 static bool on_i2c_connect(void *user_data, uint32_t address, bool read) {
     chip_state_t *chip = (chip_state_t *)user_data;
     if (address != MLX90614_I2C_ADDR) {
         return false;
     }
     chip->read_byte_index = 0;
-    return true; // ACK
+    return true; // Envia ACK confirmando que o sensor está presente
 }
 
+// Envia os 3 bytes de resposta exigidos pelo protocolo SMBus (LSB, MSB e PEC)
 static uint8_t on_i2c_read(void *user_data) {
     chip_state_t *chip = (chip_state_t *)user_data;
     float temp_c = 25.0f;
@@ -45,17 +62,18 @@ static uint8_t on_i2c_read(void *user_data) {
     uint8_t byte_to_send = 0;
 
     if (chip->read_byte_index == 0) {
-        byte_to_send = (uint8_t)(raw_val & 0xFF);         // Low Byte
+        byte_to_send = (uint8_t)(raw_val & 0xFF);         // 1º Byte: Parte Baixa (LSB)
     } else if (chip->read_byte_index == 1) {
-        byte_to_send = (uint8_t)((raw_val >> 8) & 0xFF);  // High Byte
+        byte_to_send = (uint8_t)((raw_val >> 8) & 0xFF);  // 2º Byte: Parte Alta (MSB)
     } else {
-        byte_to_send = 0x00;                              // PEC
+        byte_to_send = 0x00;                              // 3º Byte: CRC de checagem (PEC)
     }
 
     chip->read_byte_index++;
     return byte_to_send;
 }
 
+// Recebe da ESP32 qual registrador ela quer ler (0x06 Ambiente ou 0x07 Objeto)
 static bool on_i2c_write(void *user_data, uint8_t data) {
     chip_state_t *chip = (chip_state_t *)user_data;
     chip->current_reg = data;

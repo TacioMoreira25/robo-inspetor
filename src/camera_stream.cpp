@@ -1,10 +1,21 @@
+/*
+ * =============================================================================
+ * CAPTURA DE VÍDEO OTIMIZADA DA ESP32-CAM SLAVE (camera_stream.cpp)
+ * =============================================================================
+ * OTIMIZAÇÃO DE LARGURA DE BANDA E LATÊNCIA:
+ * A captura opera em resolução QVGA (320x240) com compressão JPEG nível 15 e
+ * modo `CAMERA_GRAB_LATEST`. Essa configuração limita a taxa de transmissão a
+ * ~120 kbps (~4 KB por quadro) e descarta quadros antigos do buffer DMA,
+ * garantindo fluidez de imagem sem impactar a latência dos comandos de tração.
+ */
+
 #include "camera_stream.h"
 #include "config.h"
 
 #if !MODO_SIMULACAO && defined(PLACA_ESP32_CAM)
     #include "esp_camera.h"
 
-    // Pinos oficiais do módulo AI-Thinker ESP32-CAM
+    // Mapeamento interno oficial dos pinos da câmera OV2640 na placa AI-Thinker ESP32-CAM
     #define PWDN_GPIO_NUM     32
     #define RESET_GPIO_NUM    -1
     #define XCLK_GPIO_NUM      0
@@ -23,7 +34,7 @@
     #define PCLK_GPIO_NUM     22
 #endif
 
-// Imagem JPEG de teste ultra-leve (1x1 pixel JPEG válido) para simulação no Wokwi
+// Quadro JPEG mínimo (1x1 pixel) usado apenas quando compilado em modo simulação
 static const uint8_t mock_jpeg_frame[] = {
     0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x01, 0x00, 0x48,
     0x00, 0x48, 0x00, 0x00, 0xFF, 0xDB, 0x00, 0x43, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
@@ -45,7 +56,6 @@ CameraStream::CameraStream() : _initialized(false), _frame_count(0) {
 
 bool CameraStream::begin() {
 #if MODO_SIMULACAO || !defined(PLACA_ESP32_CAM)
-    // No modo Wokwi ou na placa DevKit comum, o subsistema de vídeo opera em Mock
     _initialized = true;
     return true;
 #else
