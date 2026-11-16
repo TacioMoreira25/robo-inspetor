@@ -14,14 +14,13 @@
 #include "config.h"
 #include "web_dashboard.h"
 #include <WiFi.h>
+#include <esp_wifi.h>
 #include <WebServer.h>
 #include <ArduinoJson.h>
 
 static WebServer server(WEB_SERVER_PORT);
-static WebServer streamServer(STREAM_SERVER_PORT);
 
 static MotorController *g_motors = nullptr;
-static CameraStream *g_camera = nullptr;
 static uint8_t g_headlight_val = 0;
 static RobotTelemetryState g_latest_state;
 
@@ -34,15 +33,17 @@ static void setupMasterSoftAP(IPAddress local_ip) {
     WiFi.softAPConfig(local_ip, gateway, subnet);
     WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASS, WIFI_AP_CHANNEL, 0, 4);
 
-    // Otimizações Anti-Lag (desliga economia de energia do rádio) e Anti-Ruído RF no chassi
+    // Otimizações Anti-Lag (desliga economia de energia do rádio), HT20 (alcance) e potência máxima
     WiFi.setSleep(false);
-    WiFi.setTxPower(WIFI_POWER_15dBm);
+    WiFi.setTxPower(WIFI_POWER_19_5dBm);
+    esp_wifi_set_bandwidth(WIFI_IF_AP, WIFI_BW_HT20);
+    esp_wifi_set_protocol(WIFI_IF_AP, WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G);
 
     Serial.print("[REDE MASTER] Wi-Fi ROBO_INSPETOR_UGV ativo em: http://");
     Serial.println(WiFi.softAPIP());
 }
 
-TelemetryServer::TelemetryServer() : _motor_ref(nullptr), _cam_ref(nullptr) {}
+TelemetryServer::TelemetryServer() : _motor_ref(nullptr) {}
 
 uint8_t TelemetryServer::getHeadlightBrightness() const {
     return g_headlight_val;
@@ -182,71 +183,9 @@ void TelemetryServer::beginMaster(MotorController *motor_ctrl) {
     server.begin();
 }
 
-// Configura a ESP32-CAM Slave para conectar no Wi-Fi da Master e transmitir vídeo na porta 81
-void TelemetryServer::beginSlaveCam(CameraStream *cam_stream) {
-    _cam_ref = cam_stream;
-    g_camera = cam_stream;
-
-    IPAddress local_ip(SLAVE_CAM_STATIC_IP_ADDR);
-    IPAddress gateway(NETWORK_GATEWAY_ADDR);
-    IPAddress subnet(NETWORK_SUBNET_MASK);
-
-    WiFi.mode(WIFI_STA);
-    WiFi.config(local_ip, gateway, subnet);
-    WiFi.begin(WIFI_AP_SSID, WIFI_AP_PASS);
-
-    // Otimizações Anti-Lag e Anti-Ruído RF dentro do chassi
-    WiFi.setSleep(false);
-    WiFi.setTxPower(WIFI_POWER_15dBm);
-
-    uint32_t start_ms = millis();
-    while (WiFi.status() != WL_CONNECTED && (millis() - start_ms) < WIFI_CONNECT_TIMEOUT_MS) {
-        delay(100);
-    }
-
-    // Rota "/stream" (Porta 81) -> Envia quadros JPEG seguidos (Multipart MJPEG)
-    streamServer.on("/stream", HTTP_GET, []() {
-        WiFiClient client = streamServer.client();
-        client.println("HTTP/1.1 200 OK");
-        client.println("Content-Type: multipart/x-mixed-replace; boundary=frame");
-        client.println("Access-Control-Allow-Origin: *");
-        client.println();
-
-        const uint8_t *frame_buf = nullptr;
-        size_t frame_len = 0;
-
-        while (client.connected()) {
-            if (g_camera && g_camera->getFrame(&frame_buf, &frame_len)) {
-                client.println("--frame");
-                client.println("Content-Type: image/jpeg");
-                client.println(String("Content-Length: ") + frame_len);
-                client.println();
-                client.write(frame_buf, frame_len);
-                client.println();
-                g_camera->releaseFrame();
-            }
-            delay(30);
-        }
-    });
-
-    streamServer.begin();
-}
-
 void TelemetryServer::updateMaster(const RobotTelemetryState &state) {
     g_latest_state = state;
     server.handleClient();
-}
-
-void TelemetryServer::updateSlaveCam() {
-    // Se a câmera perder conexão com a Master por qualquer motivo, reconecta sozinha
-    if (WiFi.status() != WL_CONNECTED) {
-        static uint32_t last_retry_ms = 0;
-        if (millis() - last_retry_ms > 3000) {
-            last_retry_ms = millis();
-            WiFi.reconnect();
-        }
-    }
-    streamServer.handleClient();
 }
 
 void TelemetryServer::logSerialJson(const RobotTelemetryState &state) {

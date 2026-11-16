@@ -19,8 +19,8 @@
 // =============================================================================
 // Controle da Ponte H L298N por 4 canais PWM (Jumpers ENA e ENB fechados na L298N,
 // jumper regulador de 5V removido, 5V lógico vindo direto do Step-Down LM2596):
-#define PIN_MOTOR_LEFT_IN1          26  // Fio Cinza   -> Pino IN 1 da Ponte H L298N (Motor Esq. Sentido A)
-#define PIN_MOTOR_LEFT_IN2          27  // Fio Azul    -> Pino IN 2 da Ponte H L298N (Motor Esq. Sentido B)
+#define PIN_MOTOR_LEFT_IN1          27  // Fio Azul    -> Pino IN 2 da Ponte H L298N (Motor Esq. Frente - invertido via software)
+#define PIN_MOTOR_LEFT_IN2          26  // Fio Cinza   -> Pino IN 1 da Ponte H L298N (Motor Esq. Ré - invertido via software)
 #define PIN_MOTOR_RIGHT_IN3         14  // Fio Amarelo -> Pino IN 3 da Ponte H L298N (Motor Dir. Sentido A)
 #define PIN_MOTOR_RIGHT_IN4         13  // Fio Verde   -> Pino IN 4 da Ponte H L298N (Motor Dir. Sentido B)
 
@@ -80,10 +80,10 @@
 #define WIFI_CONNECT_TIMEOUT_MS     8000
 
 #define MASTER_STATIC_IP_ADDR       192, 168, 4, 1
-#define SLAVE_CAM_STATIC_IP_ADDR    192, 168, 4, 2
+#define SLAVE_CAM_STATIC_IP_ADDR    192, 168, 4, 50
 #define NETWORK_GATEWAY_ADDR        192, 168, 4, 1
 #define NETWORK_SUBNET_MASK         255, 255, 255, 0
 
-#define CAM_STREAM_URL              "http://192.168.4.2:81/stream"
+#define CAM_STREAM_URL              "http://192.168.4.50:81/stream"
 #define WEB_SERVER_PORT             80
 #define STREAM_SERVER_PORT          81

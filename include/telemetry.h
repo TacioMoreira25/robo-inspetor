@@ -9,13 +9,12 @@
  *   Wi-Fi próprio ("ROBO_INSPETOR_UGV", IP 192.168.4.1) e o servidor HTTP na
  *   porta 80 para o Dashboard Web, controle de tração, iluminação e diagnóstico.
  * - Modo Slave (ESP32-CAM): `beginSlaveCam()` conecta à rede da Master com IP
- *   estático 192.168.4.2 e disponibiliza o stream MJPEG contínuo na porta 81.
+ *   estático 192.168.4.50 e disponibiliza o stream MJPEG contínuo na porta 81.
  */
 
 #include <Arduino.h>
 #include "thermal_sensor.h"
 #include "motor_controller.h"
-#include "camera_stream.h"
 
 // Pacote com todos os dados atuais do robô para exibir no Painel Web e no cabo USB
 struct RobotTelemetryState {
@@ -39,14 +38,8 @@ public:
     // Inicia o Wi-Fi próprio "ROBO_INSPETOR_UGV" (192.168.4.1) e o Painel Web na Master
     void beginMaster(MotorController *motor_ctrl);
 
-    // Conecta a ESP32-CAM no Wi-Fi da Master (192.168.4.2) e inicia o vídeo na porta 81
-    void beginSlaveCam(CameraStream *cam_stream);
-
     // Atende os cliques e movimentos do Joystick no navegador (Master)
     void updateMaster(const RobotTelemetryState &state);
-
-    // Atende o envio contínuo de quadros de vídeo (Slave ESP32-CAM)
-    void updateSlaveCam();
 
     // Imprime o resumo em formato JSON no Monitor Serial do VS Code a cada 500 ms
     void logSerialJson(const RobotTelemetryState &state);
@@ -56,5 +49,4 @@ public:
 
 private:
     MotorController *_motor_ref;
-    CameraStream *_cam_ref;
 };

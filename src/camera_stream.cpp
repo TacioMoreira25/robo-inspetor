@@ -13,6 +13,7 @@
 #include "config.h"
 
 #if !MODO_SIMULACAO && defined(PLACA_ESP32_CAM)
+    #include <Wire.h>
     #include "esp_camera.h"
 
     // Mapeamento interno oficial dos pinos da câmera OV2640 na placa AI-Thinker ESP32-CAM
@@ -59,6 +60,42 @@ bool CameraStream::begin() {
     _initialized = true;
     return true;
 #else
+    // Reinicia fisicamente a alimentação da câmera pelo pino PWDN (GPIO 32) antes do init
+    pinMode(PWDN_GPIO_NUM, OUTPUT);
+    digitalWrite(PWDN_GPIO_NUM, HIGH);
+    delay(100);
+    digitalWrite(PWDN_GPIO_NUM, LOW);
+    delay(100);
+
+    // Diagnóstico I2C interno da câmera: gera XCLK em GPIO 0 (10 MHz) e sonda o barramento (GPIO 26/27)
+    ledcSetup(0, 10000000, 1);
+    ledcAttachPin(XCLK_GPIO_NUM, 0);
+    ledcWrite(0, 1);
+    delay(20);
+
+    Wire.begin(SIOD_GPIO_NUM, SIOC_GPIO_NUM, 100000);
+    Wire.beginTransmission(0x30);
+    uint8_t i2c_err = Wire.endTransmission();
+    Serial.printf("[CAM-DIAG] Probe 0x30 (OV2640): err=%u (%s)\n",
+                  i2c_err, i2c_err == 0 ? "LENTE VIVA!" : "SEM RESPOSTA");
+
+    uint8_t found_count = 0;
+    for (uint8_t addr = 1; addr < 127; addr++) {
+        Wire.beginTransmission(addr);
+        if (Wire.endTransmission() == 0) {
+            Serial.printf("[CAM-DIAG] Dispositivo I2C encontrado em: 0x%02X\n", addr);
+            found_count++;
+        }
+    }
+    if (found_count == 0) {
+        Serial.println("[CAM-DIAG] Nenhuma lente/sensor respondeu no I2C interno (GPIO 26/27).");
+    }
+
+    // Libera os pinos para o driver oficial esp_camera_init() assumir sem conflito
+    Wire.end();
+    ledcDetachPin(XCLK_GPIO_NUM);
+    delay(20);
+
     camera_config_t config;
     config.ledc_channel = LEDC_CHANNEL_0;
     config.ledc_timer = LEDC_TIMER_0;
@@ -78,7 +115,7 @@ bool CameraStream::begin() {
     config.pin_sscb_scl = SIOC_GPIO_NUM;
     config.pin_pwdn = PWDN_GPIO_NUM;
     config.pin_reset = RESET_GPIO_NUM;
-    config.xclk_freq_hz = 20000000;
+    config.xclk_freq_hz = 10000000; // 10 MHz para maior compatibilidade com lotes chineses da OV2640
     config.pixel_format = PIXFORMAT_JPEG;
 
     // Otimização Anti-Lag: QVGA (320x240) leve (~120 kbps) com descarte de frame atrasado

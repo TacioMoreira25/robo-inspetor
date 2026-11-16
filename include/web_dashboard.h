@@ -196,6 +196,42 @@ body {
 }
 .btn-reconnect-cam:hover { background: var(--accent); color: #000; }
 
+.cam-config-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 8px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--panel-border);
+    border-radius: 4px;
+}
+
+.cam-config-lbl {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--accent);
+    white-space: nowrap;
+}
+
+.cam-config-bar input {
+    width: 155px;
+    padding: 3px 6px;
+    border-radius: 3px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(9, 12, 16, 0.85);
+    color: var(--text-main);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+.cam-config-bar input:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
 /* Mira Central HUD (Crosshair) */
 .hud-crosshair {
     position: absolute;
@@ -214,7 +250,7 @@ body {
     -webkit-backdrop-filter: blur(12px);
     border: 1px solid var(--panel-border);
     border-radius: 8px;
-    padding: 14px 16px;
+    padding: 10px 12px;
     z-index: 10;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
 }
@@ -224,10 +260,10 @@ body {
     align-items: center;
     justify-content: space-between;
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-    padding-bottom: 8px;
-    margin-bottom: 10px;
+    padding-bottom: 6px;
+    margin-bottom: 8px;
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 700;
     letter-spacing: 1px;
     color: var(--accent);
@@ -236,9 +272,9 @@ body {
 
 /* CANTO SUPERIOR ESQUERDO: MINI-PAINEL DE TERMOGRAFIA */
 .hud-thermal {
-    top: 16px;
-    left: 16px;
-    width: 260px;
+    top: 10px;
+    left: 10px;
+    width: 220px;
 }
 
 .temp-main-row {
@@ -293,9 +329,9 @@ body {
 
 /* CANTO SUPERIOR DIREITO: TELEMETRIA DE TRAÇÃO & SISTEMA */
 .hud-traction {
-    top: 16px;
-    right: 16px;
-    width: 250px;
+    top: 10px;
+    right: 10px;
+    width: 220px;
 }
 
 .motor-gauge {
@@ -326,24 +362,25 @@ body {
 
 /* CANTO INFERIOR ESQUERDO: TECLADO WASD + FARÓIS + AUTO-TESTE */
 .hud-controls-left {
-    bottom: 16px;
-    left: 16px;
-    width: 310px;
+    bottom: 10px;
+    left: 10px;
+    width: 235px;
 }
 
 .wasd-container {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 12px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    margin-bottom: 10px;
 }
 
 .wasd-grid {
     display: grid;
-    grid-template-columns: repeat(3, 38px);
-    grid-template-rows: repeat(2, 36px);
-    gap: 5px;
+    grid-template-columns: repeat(3, 34px);
+    grid-template-rows: repeat(2, 32px);
+    gap: 4px;
+    justify-content: center;
 }
 
 .key-cap {
@@ -456,9 +493,9 @@ input[type=range]::-webkit-slider-thumb {
 
 /* CANTO INFERIOR DIREITO: JOYSTICK ANALÓGICO DE PRECISÃO */
 .hud-joystick {
-    bottom: 16px;
-    right: 16px;
-    width: 240px;
+    bottom: 10px;
+    right: 10px;
+    width: 210px;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -572,6 +609,11 @@ canvas#joy:active { cursor: grabbing; }
             <span class="brand-title">UGV INSPETOR</span>
             <span class="brand-sub">MASTER 192.168.4.1</span>
         </div>
+        <div class="cam-config-bar">
+            <span class="cam-config-lbl">CAM</span>
+            <input id="cam_ip_input" type="text" placeholder="192.168.4.2" onkeydown="if(event.key==='Enter') updateCameraUrl()">
+            <button class="btn-reconnect-cam" style="margin-top:0;padding:3px 8px;font-size:10px;" onclick="updateCameraUrl()">OK</button>
+        </div>
         <div class="top-metrics">
             <div class="pill">
                 <span class="pill-label">LINK:</span>
@@ -609,12 +651,12 @@ canvas#joy:active { cursor: grabbing; }
                 <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5">
                     <path d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
-                <div>STREAMING ÓPTICO OV2640 (ESP32-CAM SLAVE)</div>
-                <div style="font-size:11px;color:#64748b;">Endpoint: http://192.168.4.2:81/stream</div>
+                <div>VÍDEO AO VIVO (CELULAR ANDROID / IP WEBCAM)</div>
+                <div id="cam_endpoint_lbl" style="font-size:11px;color:#64748b;">Endpoint: http://192.168.4.2:8080/video</div>
                 <button class="btn-reconnect-cam" onclick="reloadCamera()">Reconectar Vídeo</button>
             </div>
 
-            <img id="cam_stream" class="camera-feed" src="http://192.168.4.2:81/stream" alt="" onload="onCamLoad()" onerror="onCamError()">
+            <img id="cam_stream" class="camera-feed" src="" alt="" onload="onCamLoad()" onerror="onCamError()">
 
             <!-- Mira Tática Central -->
             <svg class="hud-crosshair" viewBox="0 0 100 100">
@@ -721,7 +763,7 @@ canvas#joy:active { cursor: grabbing; }
         <section class="hud-card hud-joystick">
             <div class="hud-header">
                 <span>JOYSTICK</span>
-                <span class="hdr-tag">PROPORCIONAL</span>
+                <span class="hdr-tag" id="joy_mode">PROPORCIONAL</span>
             </div>
             <canvas id="joy" width="170" height="170"></canvas>
             <div class="joy-coords">
@@ -742,6 +784,44 @@ let dragging = false;
 let joyX = 0, joyY = 0;
 let driveInterval = null;
 
+const DEFAULT_CAM_ADDR = '192.168.4.2:8080/video';
+let currentCamUrl = 'http://' + DEFAULT_CAM_ADDR;
+
+function normalizeCamUrl(raw) {
+    let v = (raw || '').trim();
+    if (!v) v = DEFAULT_CAM_ADDR;
+    if (!/^https?:\/\//i.test(v)) v = 'http://' + v;
+    // Se o usuário digitou só o IP (ex: 192.168.4.2), completa porta e rota padrão do IP Webcam
+    if (/^https?:\/\/[^/:]+$/i.test(v)) v += ':8080/video';
+    else if (/^https?:\/\/[^/]+:\d+$/i.test(v)) v += '/video';
+    return v;
+}
+
+function applyCameraUrl(raw, bustCache) {
+    currentCamUrl = normalizeCamUrl(raw);
+    const img = document.getElementById('cam_stream');
+    const lbl = document.getElementById('cam_endpoint_lbl');
+    if (lbl) lbl.innerText = 'Endpoint: ' + currentCamUrl;
+    if (img) img.src = currentCamUrl + (bustCache ? ('?t=' + Date.now()) : '');
+}
+
+function updateCameraUrl() {
+    const input = document.getElementById('cam_ip_input');
+    const raw = input ? input.value.trim() : '';
+    const finalUrl = normalizeCamUrl(raw || DEFAULT_CAM_ADDR);
+    try { localStorage.setItem('ugv_cam_url', finalUrl); } catch (_) {}
+    if (input) input.value = finalUrl.replace(/^https?:\/\//i, '');
+    applyCameraUrl(finalUrl, true);
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+    let saved = DEFAULT_CAM_ADDR;
+    try { saved = localStorage.getItem('ugv_cam_url') || DEFAULT_CAM_ADDR; } catch (_) {}
+    const input = document.getElementById('cam_ip_input');
+    if (input) input.value = saved.replace(/^https?:\/\//i, '');
+    applyCameraUrl(saved, false);
+});
+
 // Estado do vídeo: a classe "live" no palco exibe a imagem e a mira
 function onCamLoad() {
     document.querySelector('.camera-stage').classList.add('live');
@@ -751,8 +831,7 @@ function onCamError() {
 }
 
 function reloadCamera() {
-    const img = document.getElementById('cam_stream');
-    img.src = 'http://192.168.4.2:81/stream?t=' + Date.now();
+    applyCameraUrl(currentCamUrl, true);
 }
 
 function drawJoystick(normX, normY) {
@@ -800,7 +879,9 @@ function sendCmd(x, y, lightVal) {
     document.getElementById('jy').innerText = y;
     let url = '/cmd?x=' + x + '&y=' + y;
     if (lightVal !== undefined) url += '&light=' + lightVal;
-    fetch(url).catch(() => {});
+    const opts = (typeof AbortSignal !== 'undefined' && AbortSignal.timeout)
+        ? { signal: AbortSignal.timeout(350) } : undefined;
+    fetch(url, opts).catch(() => {});
 }
 
 function startContinuousSend() {
@@ -880,49 +961,239 @@ function runBenchTest() {
 }
 
 function emergencyBrake() {
+    pressedKeys.clear();
+    ['w', 'a', 's', 'd'].forEach(k => {
+        const el = document.getElementById('key_' + k);
+        if (el) el.classList.remove('pressed');
+    });
     stopContinuousSend();
     joyX = 0; joyY = 0;
     drawJoystick(0, 0);
     sendCmd(0, 0);
 }
 
-function holdKey(k) {
-    const el = document.getElementById('key_' + k);
-    if (el) el.classList.add('pressed');
-    if (k === 'w') { joyX = 0; joyY = 255; }
-    else if (k === 's') { joyX = 0; joyY = -255; }
-    else if (k === 'a') { joyX = -255; joyY = 0; }
-    else if (k === 'd') { joyX = 255; joyY = 0; }
+// Suporte multi-tecla (W+A / W+D faz curva andando sem parar o robô)
+const pressedKeys = new Set();
+
+function applyKeysDrive() {
+    const fwd = pressedKeys.has('w') ? 1 : 0;
+    const rev = pressedKeys.has('s') ? 1 : 0;
+    const left = pressedKeys.has('a') ? 1 : 0;
+    const right = pressedKeys.has('d') ? 1 : 0;
+
+    const dirY = fwd - rev;
+    const dirX = right - left;
+
+    if (dirY === 0 && dirX === 0) {
+        stopContinuousSend();
+        joyX = 0; joyY = 0;
+        drawJoystick(0, 0);
+        sendCmd(0, 0);
+        return;
+    }
+
+    joyY = dirY * 255;
+    // Em movimento (W/S + A/D), usa X=140 para curva em arco suave sem parar/inverter a roda interna
+    joyX = (dirY !== 0) ? (dirX * 140) : (dirX * 255);
     drawJoystick(joyX / 255, joyY / 255);
     sendCmd(joyX, joyY);
     startContinuousSend();
 }
 
-function releaseKey(k) {
+function holdKey(k) {
+    pressedKeys.add(k);
     const el = document.getElementById('key_' + k);
-    if (el) el.classList.remove('pressed');
-    if (['w', 'a', 's', 'd'].includes(k)) {
-        emergencyBrake();
-    }
+    if (el) el.classList.add('pressed');
+    applyKeysDrive();
 }
 
+function releaseKey(k) {
+    pressedKeys.delete(k);
+    const el = document.getElementById('key_' + k);
+    if (el) el.classList.remove('pressed');
+    applyKeysDrive();
+}
+
+const KEY_MAP = {
+    'w': 'w', 'arrowup': 'w',
+    's': 's', 'arrowdown': 's',
+    'a': 'a', 'arrowleft': 'a',
+    'd': 'd', 'arrowright': 'd'
+};
+
 window.addEventListener('keydown', e => {
+    if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
     if (e.repeat) return;
-    const k = e.key.toLowerCase();
-    if (['w', 'a', 's', 'd'].includes(k)) holdKey(k);
-    else if (k === ' ') {
+    const raw = e.key.toLowerCase();
+    if (KEY_MAP[raw]) {
+        if (raw.startsWith('arrow')) e.preventDefault();
+        const jm = document.getElementById('joy_mode');
+        if (jm) jm.innerText = 'TECLA: ' + raw.toUpperCase();
+        holdKey(KEY_MAP[raw]);
+    } else if (raw === ' ') {
+        e.preventDefault();
         document.getElementById('key_space').classList.add('pressed');
         emergencyBrake();
     }
-    else if (k === 'l') toggleLight();
-    else if (k === 't') runBenchTest();
+    else if (raw === 'l') toggleLight();
+    else if (raw === 't') runBenchTest();
 });
 
 window.addEventListener('keyup', e => {
-    const k = e.key.toLowerCase();
-    if (['w', 'a', 's', 'd'].includes(k)) releaseKey(k);
-    else if (k === ' ') document.getElementById('key_space').classList.remove('pressed');
+    if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
+    const raw = e.key.toLowerCase();
+    if (KEY_MAP[raw]) releaseKey(KEY_MAP[raw]);
+    else if (raw === ' ') document.getElementById('key_space').classList.remove('pressed');
 });
+
+// Suporte nativo a Controle / Gamepad (USB, Dongle 2.4G ou Bluetooth no navegador)
+// Analógico direito e eixo Y do analógico esquerdo ficam 100% desativados.
+let gpActive = false;
+let gpWasZero = true;
+let gpPrevBtnBrake = false;
+let gpPrevBtnLight = false;
+let gpWasMovingForward = false;
+let gpLastForwardMs = 0;
+let gpLtWasPressed = false;
+let gpLtBrakeUntil = 0;
+
+window.addEventListener('gamepadconnected', () => {
+    const tag = document.getElementById('joy_mode');
+    if (tag) tag.innerText = 'CONTROLE OK';
+});
+
+window.addEventListener('gamepaddisconnected', () => {
+    const tag = document.getElementById('joy_mode');
+    if (tag) tag.innerText = 'PROPORCIONAL';
+});
+
+setInterval(() => {
+    if (!navigator.getGamepads) return;
+    const pads = navigator.getGamepads();
+    let pad = null;
+    for (let i = 0; i < pads.length; i++) {
+        if (pads[i] && pads[i].connected) { pad = pads[i]; break; }
+    }
+    if (!pad) return;
+
+    const tag = document.getElementById('joy_mode');
+    const modeLbl = (pad.mapping === 'standard') ? 'CONTROLE [STD]' : 'CONTROLE [RAW]';
+    if (tag && tag.innerText !== modeLbl) tag.innerText = modeLbl;
+
+    const isMachenikeHid = /0079-181c|MACHENIKE/i.test(pad.id || '') && pad.axes.length >= 8;
+
+    // Botão 4 (LB/L1) = Freio total (mantém parado enquanto segurar); Botão Y/Triângulo = Faróis
+    // (No Machenike 0079-181c, X e Y vêm invertidos: b[3]=X e b[2]=Y)
+    const btnBrake = !!(pad.buttons[4] && pad.buttons[4].pressed);
+    if (btnBrake && !gpPrevBtnBrake) emergencyBrake();
+    gpPrevBtnBrake = btnBrake;
+    if (btnBrake) return;
+
+    const lightBtnIdx = isMachenikeHid ? 2 : 3;
+    const btnLight = !!(pad.buttons[lightBtnIdx] && pad.buttons[lightBtnIdx].pressed);
+    if (btnLight && !gpPrevBtnLight) toggleLight();
+    gpPrevBtnLight = btnLight;
+
+    // Não sobrescreve se o usuário estiver arrastando na tela ou segurando WASD/Setas
+    if (dragging || pressedKeys.size > 0) return;
+
+    const deadzone = 0.15;
+
+    // 1. Acelerador / Freio+Ré nos gatilhos (RT/LT) OU nas Setinhas Cima/Baixo (D-Pad)
+    const nowMs = Date.now();
+    let rt = 0, lt = 0;
+    if (isMachenikeHid) {
+        // No Machenike G5Pro (0079-181c), o analógico direito vaza em b[6]/b[7] com ax[6]/ax[7]=0.
+        // RT real leva ax[6]>0.15 e ax[7]<-0.15; LT real leva ax[6]<-0.15 e ax[7]>0.15.
+        const ax6 = pad.axes[6] || 0;
+        const ax7 = pad.axes[7] || 0;
+        if (ax6 > 0.15 && ax7 < -0.15) {
+            const b7 = pad.buttons[7] ? pad.buttons[7].value : 0;
+            rt = b7 > 0.1 ? b7 : ax6;
+        } else if (ax6 < -0.15 && ax7 > 0.15) {
+            const b6 = pad.buttons[6] ? pad.buttons[6].value : 0;
+            lt = b6 > 0.1 ? b6 : -ax6;
+        }
+    } else {
+        rt = pad.buttons[7] ? (pad.buttons[7].value || (pad.buttons[7].pressed ? 1 : 0)) : 0;
+        lt = pad.buttons[6] ? (pad.buttons[6].value || (pad.buttons[6].pressed ? 1 : 0)) : 0;
+        if (rt < 0.12) rt = 0;
+        if (lt < 0.12) lt = 0;
+    }
+    const dpadUp = (pad.buttons[12] && pad.buttons[12].pressed) ? 1 : 0;
+    const dpadDown = (pad.buttons[13] && pad.buttons[13].pressed) ? 1 : 0;
+
+    let rawY = 0;
+    if (dpadUp || dpadDown) {
+        rawY = dpadUp - dpadDown;
+        if (rawY > 0) { gpWasMovingForward = true; gpLastForwardMs = nowMs; }
+        gpLtWasPressed = false;
+        gpLtBrakeUntil = 0;
+    } else if (rt > 0.05) {
+        rawY = rt - lt;
+        gpWasMovingForward = true;
+        gpLastForwardMs = nowMs;
+        gpLtWasPressed = (lt > 0.05);
+        gpLtBrakeUntil = 0;
+    } else if (lt > 0.05) {
+        if (!gpLtWasPressed) {
+            gpLtWasPressed = true;
+            if (gpWasMovingForward) {
+                gpLtBrakeUntil = nowMs + 320;
+                gpWasMovingForward = false;
+            } else {
+                gpLtBrakeUntil = 0;
+            }
+        }
+        rawY = (nowMs < gpLtBrakeUntil) ? 0 : -lt;
+    } else {
+        gpLtWasPressed = false;
+        gpLtBrakeUntil = 0;
+        if (gpWasMovingForward && (nowMs - gpLastForwardMs) > 500) {
+            gpWasMovingForward = false;
+        }
+    }
+
+    // 2. Direção (Volante): APENAS Analógico Esquerdo X (axes[0]) ou D-Pad Esquerda/Direita
+    const dpadLeft = (pad.buttons[14] && pad.buttons[14].pressed) ? 1 : 0;
+    const dpadRight = (pad.buttons[15] && pad.buttons[15].pressed) ? 1 : 0;
+    let rawX = 0;
+    if (dpadLeft || dpadRight) {
+        rawX = dpadRight - dpadLeft;
+    } else {
+        rawX = pad.axes[0] || 0;
+        if (Math.abs(rawX) < deadzone) rawX = 0;
+    }
+
+    // Em movimento (acelerando/ré), curva em arco suave (x até 150) para não parar a roda interna; parado, gira no eixo (255)
+    const maxTurn = (Math.abs(rawY) > 0.1) ? 150 : 255;
+    const gx = Math.round(rawX * maxTurn);
+    const gy = Math.round(rawY * 255);
+
+    if (gx !== 0 || gy !== 0) {
+        gpActive = true;
+        gpWasZero = false;
+        joyX = gx;
+        joyY = gy;
+        if (tag) {
+            const src = [];
+            if (dpadUp || dpadDown || dpadLeft || dpadRight) src.push('DP');
+            if (rt > 0.05) src.push('RT');
+            if (lt > 0.05) src.push('LT');
+            if (Math.abs(pad.axes[0] || 0) >= deadzone && !dpadLeft && !dpadRight) src.push('AX0');
+            tag.innerText = (pad.mapping === 'standard' ? 'STD ' : 'RAW ') + src.join('+');
+        }
+        drawJoystick(gx / 255, rawY);
+        sendCmd(joyX, joyY);
+    } else if (gpActive && !gpWasZero) {
+        gpWasZero = true;
+        gpActive = false;
+        joyX = 0; joyY = 0;
+        if (tag) tag.innerText = modeLbl;
+        drawJoystick(0, 0);
+        sendCmd(0, 0);
+    }
+}, 80);
 
 // Telemetria de enlace: latência (RTT do polling), perda de conexão e uptime
 let failCount = 0;

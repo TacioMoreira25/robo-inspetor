@@ -15,6 +15,11 @@
             <span class="brand-title">UGV INSPETOR</span>
             <span class="brand-sub">MASTER 192.168.4.1</span>
         </div>
+        <div class="cam-config-bar">
+            <span class="cam-config-lbl">CAM</span>
+            <input id="cam_ip_input" type="text" placeholder="192.168.4.2" onkeydown="if(event.key==='Enter') updateCameraUrl()">
+            <button class="btn-reconnect-cam" style="margin-top:0;padding:3px 8px;font-size:10px;" onclick="updateCameraUrl()">OK</button>
+        </div>
         <div class="top-metrics">
             <div class="pill">
                 <span class="pill-label">LINK:</span>
@@ -52,12 +57,12 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5">
                     <path d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
-                <div>STREAMING ÓPTICO OV2640 (ESP32-CAM SLAVE)</div>
-                <div style="font-size:11px;color:#64748b;">Endpoint: http://192.168.4.2:81/stream</div>
+                <div>VÍDEO AO VIVO (CELULAR ANDROID / IP WEBCAM)</div>
+                <div id="cam_endpoint_lbl" style="font-size:11px;color:#64748b;">Endpoint: http://192.168.4.2:8080/video</div>
                 <button class="btn-reconnect-cam" onclick="reloadCamera()">Reconectar Vídeo</button>
             </div>
 
-            <img id="cam_stream" class="camera-feed" src="http://192.168.4.2:81/stream" alt="" onload="onCamLoad()" onerror="onCamError()">
+            <img id="cam_stream" class="camera-feed" src="" alt="" onload="onCamLoad()" onerror="onCamError()">
 
             <!-- Mira Tática Central -->
             <svg class="hud-crosshair" viewBox="0 0 100 100">
@@ -164,7 +169,7 @@
         <section class="hud-card hud-joystick">
             <div class="hud-header">
                 <span>JOYSTICK</span>
-                <span class="hdr-tag">PROPORCIONAL</span>
+                <span class="hdr-tag" id="joy_mode">PROPORCIONAL</span>
             </div>
             <canvas id="joy" width="170" height="170"></canvas>
             <div class="joy-coords">

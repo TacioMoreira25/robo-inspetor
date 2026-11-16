@@ -7,7 +7,7 @@
  *
  * 1. Perfil Slave (`env:esp32cam_hardware`):
  *    Ativa o BLOCO 1, dedicando a ESP32-CAM exclusivamente ao streaming MJPEG
- *    no endereço `http://192.168.4.2:81/stream`, mantendo os pinos de boot livres.
+ *    no endereço `http://192.168.4.50:81/stream`, mantendo os pinos de boot livres.
  *
  * 2. Perfil Master (`env:esp32_hardware` e `env:wokwi`):
  *    Ativa o BLOCO 2 na ESP32 DevKit V1, responsável pela rede `ROBO_INSPETOR_UGV`
@@ -21,44 +21,11 @@
 #include "config.h"
 #include "motor_controller.h"
 #include "thermal_sensor.h"
-#include "camera_stream.h"
 #include "telemetry.h"
 
 // =============================================================================
-// BLOCO 1: CÓDIGO DA ESP32-CAM (SLAVE - DEDICADA 100% AO VÍDEO NA PORTA 81)
-// =============================================================================
-#if defined(PLACA_ESP32_CAM) && !MODO_SIMULACAO
-
-static CameraStream slaveCamera;
-static TelemetryServer slaveStreamServer;
-
-void setup() {
-    Serial.begin(SERIAL_BAUD_RATE);
-    delay(200);
-
-    Serial.println("==================================================");
-    Serial.println("  ROBO INSPETOR (UGV) - ESP32-CAM SLAVE (VIDEO)   ");
-    Serial.println("  Pinos 12, 13, 14, 15 livres - Dedicada ao Stream");
-    Serial.println("==================================================");
-
-    if (!slaveCamera.begin()) {
-        Serial.println("[FALHA] Erro ao inicializar camera OV2640!");
-    } else {
-        Serial.println("[OK] Camera OV2640 inicializada em modo QVGA leve.");
-    }
-
-    slaveStreamServer.beginSlaveCam(&slaveCamera);
-    Serial.println("[STREAM] Servidor MJPEG ativo em http://192.168.4.2:81/stream");
-}
-
-void loop() {
-    slaveStreamServer.updateSlaveCam();
-}
-
-#else
-
-// =============================================================================
-// BLOCO 2: CÓDIGO DA ESP32 DEVKIT V1 (MASTER - CÉREBRO CENTRAL DO ROBÔ)
+// CÓDIGO DA ESP32 DEVKIT V1 (MASTER - CÉREBRO CENTRAL DO ROBÔ)
+// Vídeo delegado ao celular Android (IP Webcam) conectado na rede do robô.
 // =============================================================================
 static MotorController motors;
 static ThermalSensor thermalSensor(MLX90614_DEFAULT_ADDR);
@@ -140,6 +107,12 @@ void runBenchCheckup() {
 }
 
 void setup() {
+    // Zera os pinos da Ponte H imediatamente no boot (antes do delay) para evitar tranco nos motores
+    pinMode(PIN_MOTOR_LEFT_IN1, OUTPUT);  digitalWrite(PIN_MOTOR_LEFT_IN1, LOW);
+    pinMode(PIN_MOTOR_LEFT_IN2, OUTPUT);  digitalWrite(PIN_MOTOR_LEFT_IN2, LOW);
+    pinMode(PIN_MOTOR_RIGHT_IN3, OUTPUT); digitalWrite(PIN_MOTOR_RIGHT_IN3, LOW);
+    pinMode(PIN_MOTOR_RIGHT_IN4, OUTPUT); digitalWrite(PIN_MOTOR_RIGHT_IN4, LOW);
+
     Serial.begin(SERIAL_BAUD_RATE);
     delay(200);
 
@@ -242,5 +215,3 @@ void loop() {
         telemetryServer.logSerialJson(telem);
     }
 }
-
-#endif
