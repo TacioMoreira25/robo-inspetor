@@ -14,6 +14,7 @@
 #include "config.h"
 #include "web_dashboard.h"
 #include <WiFi.h>
+#include <ESPmDNS.h>
 #include <esp_wifi.h>
 #include <WebServer.h>
 #include <ArduinoJson.h>
@@ -23,24 +24,38 @@ static WebServer server(WEB_SERVER_PORT);
 static MotorController *g_motors = nullptr;
 static uint8_t g_headlight_val = 0;
 static RobotTelemetryState g_latest_state;
+static bool g_mdns_started = false;
 
-// Configura a ESP32 DevKit V1 como Ponto de Acesso (SoftAP) com IP fixo 192.168.4.1
-static void setupMasterSoftAP(IPAddress local_ip) {
-    IPAddress gateway(NETWORK_GATEWAY_ADDR);
-    IPAddress subnet(NETWORK_SUBNET_MASK);
+// Conecta a ESP32 DevKit V1 no Hotspot Wi-Fi do Celular ("robo_ugv" / "12345678")
+static void setupMasterStation() {
+    WiFi.mode(WIFI_STA);
+    WiFi.setHostname(MDNS_HOSTNAME);
+    WiFi.begin(WIFI_AP_SSID, WIFI_AP_PASS);
 
-    WiFi.mode(WIFI_AP);
-    WiFi.softAPConfig(local_ip, gateway, subnet);
-    WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASS, WIFI_AP_CHANNEL, 0, 4);
-
-    // Otimizações Anti-Lag (desliga economia de energia do rádio), HT20 (alcance) e potência máxima
+    // Otimizações Anti-Lag (desliga economia de energia do rádio) e potência máxima
     WiFi.setSleep(false);
     WiFi.setTxPower(WIFI_POWER_19_5dBm);
-    esp_wifi_set_bandwidth(WIFI_IF_AP, WIFI_BW_HT20);
-    esp_wifi_set_protocol(WIFI_IF_AP, WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G);
+    esp_wifi_set_protocol(WIFI_IF_STA, WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N);
 
-    Serial.print("[REDE MASTER] Wi-Fi ROBO_INSPETOR_UGV ativo em: http://");
-    Serial.println(WiFi.softAPIP());
+    Serial.printf("[REDE MASTER] Conectando ao Hotspot do celular '%s'...\n", WIFI_AP_SSID);
+    uint32_t t0 = millis();
+    while (WiFi.status() != WL_CONNECTED && (millis() - t0) < WIFI_CONNECT_TIMEOUT_MS) {
+        delay(200);
+        Serial.print(".");
+    }
+    Serial.println();
+
+    if (WiFi.status() == WL_CONNECTED) {
+        if (MDNS.begin(MDNS_HOSTNAME)) {
+            g_mdns_started = true;
+            MDNS.addService("http", "tcp", WEB_SERVER_PORT);
+        }
+        Serial.print("[REDE MASTER] Conectado! Painel em: http://");
+        Serial.print(WiFi.localIP());
+        Serial.println(" ou http://ugv.local");
+    } else {
+        Serial.println("[REDE MASTER] Hotspot ainda nao encontrado (tentara reconectar em background).");
+    }
 }
 
 TelemetryServer::TelemetryServer() : _motor_ref(nullptr) {}
@@ -58,15 +73,17 @@ void TelemetryServer::beginMaster(MotorController *motor_ctrl) {
     _motor_ref = motor_ctrl;
     g_motors = motor_ctrl;
 
-    setupMasterSoftAP(IPAddress(MASTER_STATIC_IP_ADDR));
+    setupMasterStation();
 
     // Rota "/" -> Entrega o Painel Web (carregado de include/web_dashboard.h)
     server.on("/", HTTP_GET, []() {
+        server.sendHeader("Access-Control-Allow-Origin", "*");
         server.send(200, "text/html", FPSTR(HTML_DASHBOARD));
     });
 
     // Rota "/cmd" -> Recebe X e Y do Joystick e o brilho do farol MOSFET (GPIO 25)
     server.on("/cmd", HTTP_GET, []() {
+        server.sendHeader("Access-Control-Allow-Origin", "*");
         if (!g_motors) {
             server.send(500, "text/plain", "Erro Motores");
             return;
@@ -84,7 +101,8 @@ void TelemetryServer::beginMaster(MotorController *motor_ctrl) {
 
     // Rota "/temp" -> Consultada pelo navegador a cada 500ms para atualizar a tela
     server.on("/temp", HTTP_GET, []() {
-        StaticJsonDocument<256> doc;
+        server.sendHeader("Access-Control-Allow-Origin", "*");
+        StaticJsonDocument<320> doc;
         doc["valid"] = g_latest_state.thermal.is_valid;
         doc["obj"] = g_latest_state.thermal.object_temperature;
         doc["amb"] = g_latest_state.thermal.ambient_temperature;
@@ -93,6 +111,9 @@ void TelemetryServer::beginMaster(MotorController *motor_ctrl) {
         doc["mL"] = g_latest_state.motor_left_speed;
         doc["mR"] = g_latest_state.motor_right_speed;
         doc["clients"] = g_latest_state.wifi_clients;
+        doc["rssi"] = g_latest_state.wifi_rssi;
+        doc["ip"] = WiFi.localIP().toString();
+        doc["gw"] = WiFi.gatewayIP().toString();
         doc["uptime"] = millis();
         String out;
         serializeJson(doc, out);
@@ -185,6 +206,22 @@ void TelemetryServer::beginMaster(MotorController *motor_ctrl) {
 
 void TelemetryServer::updateMaster(const RobotTelemetryState &state) {
     g_latest_state = state;
+    if (WiFi.status() == WL_CONNECTED && !g_mdns_started) {
+        if (MDNS.begin(MDNS_HOSTNAME)) {
+            g_mdns_started = true;
+            MDNS.addService("http", "tcp", WEB_SERVER_PORT);
+        }
+        Serial.print("[REDE MASTER] Conectado ao Hotspot! Acesse: http://");
+        Serial.print(WiFi.localIP());
+        Serial.println(" ou http://ugv.local");
+    } else if (WiFi.status() != WL_CONNECTED) {
+        static uint32_t last_reconnect_ms = 0;
+        if (millis() - last_reconnect_ms > 4000) {
+            last_reconnect_ms = millis();
+            WiFi.disconnect();
+            WiFi.begin(WIFI_AP_SSID, WIFI_AP_PASS);
+        }
+    }
     server.handleClient();
 }
 

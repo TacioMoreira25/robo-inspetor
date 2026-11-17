@@ -13,12 +13,12 @@
         <div class="brand">
             <div class="brand-dot" id="conn_dot"></div>
             <span class="brand-title">UGV INSPETOR</span>
-            <span class="brand-sub">MASTER 192.168.4.1</span>
+            <span class="brand-sub" id="esp_ip_lbl">UGV.LOCAL</span>
         </div>
         <div class="cam-config-bar">
-            <span class="cam-config-lbl">CAM</span>
-            <input id="cam_ip_input" type="text" placeholder="192.168.4.2" onkeydown="if(event.key==='Enter') updateCameraUrl()">
-            <button class="btn-reconnect-cam" style="margin-top:0;padding:3px 8px;font-size:10px;" onclick="updateCameraUrl()">OK</button>
+            <span class="cam-config-lbl">IP CELULAR</span>
+            <input id="cam_ip_input" type="text" placeholder="Ex: 192.168.43.1" onkeydown="if(event.key==='Enter') updateCameraUrl()">
+            <button class="btn-reconnect-cam" style="margin-top:0;padding:3px 8px;font-size:10px;" onclick="updateCameraUrl()">Conectar</button>
         </div>
         <div class="top-metrics">
             <div class="pill">
@@ -34,12 +34,12 @@
                 <span class="pill-val" id="upt">00:00:00</span>
             </div>
             <div class="pill">
-                <span class="pill-label">REDE WI-FI:</span>
-                <span class="pill-val">ROBO_INSPETOR_UGV</span>
+                <span class="pill-label">HOTSPOT:</span>
+                <span class="pill-val">robo_ugv</span>
             </div>
             <div class="pill">
-                <span class="pill-label">DISPOSITIVOS:</span>
-                <span class="pill-val" id="wcli">0</span>
+                <span class="pill-label">SINAL ESP:</span>
+                <span class="pill-val" id="wcli">-- dBm</span>
             </div>
             <div class="pill">
                 <span class="pill-label">WATCHDOG (1S):</span>

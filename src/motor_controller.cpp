@@ -141,8 +141,9 @@ void MotorController::setTargetSpeed(int16_t target_left, int16_t target_right) 
 // - Eixo Y controla Avanço (+) e Ré (-)
 // - Eixo X controla Curva para Direita (+) e Esquerda (-)
 void MotorController::driveJoystick(int16_t x, int16_t y) {
-    int16_t left = constrain(y + x, -255, 255);
-    int16_t right = constrain(y - x, -255, 255);
+    // Eixo X invertido para corrigir sentido físico de Esquerda/Direita no chassi
+    int16_t left = constrain(y - x, -255, 255);
+    int16_t right = constrain(y + x, -255, 255);
     setTargetSpeed(left, right);
 }
 
@@ -156,18 +157,16 @@ void MotorController::drive(DriveDirection dir, uint8_t speed) {
             setTargetSpeed(-speed, -speed);
             break;
         case DriveDirection::SPIN_LEFT:
-            // Giro no próprio eixo (Zero Turn) para a esquerda: esquerda recua, direita avança
-            setTargetSpeed(-speed, speed);
-            break;
-        case DriveDirection::SPIN_RIGHT:
-            // Giro no próprio eixo (Zero Turn) para a direita: esquerda avança, direita recua
             setTargetSpeed(speed, -speed);
             break;
+        case DriveDirection::SPIN_RIGHT:
+            setTargetSpeed(-speed, speed);
+            break;
         case DriveDirection::PIVOT_LEFT:
-            setTargetSpeed(0, speed);
+            setTargetSpeed(speed, 0);
             break;
         case DriveDirection::PIVOT_RIGHT:
-            setTargetSpeed(speed, 0);
+            setTargetSpeed(0, speed);
             break;
         case DriveDirection::STOP:
         default:

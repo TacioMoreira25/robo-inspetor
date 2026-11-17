@@ -72,12 +72,15 @@
 #define SERIAL_BAUD_RATE            115200
 
 // =============================================================================
-// 5. REDE WI-FI PRÓPRIA DO ROBÔ (SOFTAP AUTÔNOMO E ANTI-LAG)
+// 5. REDE WI-FI (HOTSPOT DO CELULAR GALAXY A20 COMO ROTEADOR CENTRAL)
 // =============================================================================
-#define WIFI_AP_SSID                "ROBO_INSPETOR_UGV"
+// Na arquitetura Hotspot, a ESP32 recebe o IP automaticamente via DHCP do celular
+// (não usa mais o 192.168.4.1 fixo) e responde também em http://ugv.local
+#define WIFI_AP_SSID                "robo_ugv"
 #define WIFI_AP_PASS                "12345678"
 #define WIFI_AP_CHANNEL             6
 #define WIFI_CONNECT_TIMEOUT_MS     8000
+#define MDNS_HOSTNAME               "ugv"
 
 #define MASTER_STATIC_IP_ADDR       192, 168, 4, 1
 #define SLAVE_CAM_STATIC_IP_ADDR    192, 168, 4, 50

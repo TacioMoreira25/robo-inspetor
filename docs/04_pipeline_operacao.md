@@ -1,78 +1,71 @@
-# 04. Arquitetura de Software e Passo a Passo de Operação
+# 04. Arquitetura de Software e Ciclo Completo de Operação e Testes (Hotspot Galaxy A20)
 
-Fluxo direto de operação entre a **ESP32 DevKit V1 (Master)**, a **ESP32-CAM (Slave)** e o **Painel Web do Operador**.
+Fluxo oficial de operação com o **Samsung Galaxy A20** atuando como **Roteador Wi-Fi Central (Hotspot `robo_ugv`)** + servidor de vídeo **IP Webcam**, eliminando o gargalo de latência da caixa fechada da ESP32.
 
 ---
 
-## 1. Diagrama da Arquitetura de Software (Master + Slave)
+## 1. Como Funciona a Rede com o Galaxy A20 como Roteador Central
 
-```mermaid
-flowchart TD
-    subgraph MASTER["ESP32 DevKit V1 (Master — Cérebro Central)"]
-        M_SETUP["Setup Master:<br/>• Configura 4 Canais PWM da L298N (GPIOs 26, 27, 14, 13 @ 1500Hz)<br/>• Configura PWM do Módulo MOSFET XY-MOS (GPIO 25)<br/>• Inicia I2C (GPIO 21 SDA / GPIO 22 SCL) p/ MLX90614<br/>• Inicia Rede Wi-Fi ROBO_INSPETOR_UGV (192.168.4.1)"]
-        M_LOOP["Loop Principal Master"]
-        M_CMD["Rota /cmd:<br/>Recebe eixos X, Y e Farol<br/>do Joystick / Teclado WASD"]
-        M_TEST["Rota /test ou Tecla T:<br/>Auto-Teste individual de 400ms<br/>em cada canal (Farol + 4 Pinos L298N)"]
-        M_PWM["Aplica Rampa Suave + Deadband<br/>na Ponte H L298N e MOSFET XY-MOS"]
-        M_TEMP["Rota /temp (500ms):<br/>Lê MLX90614 via I2C (Amb e Obj)<br/>Corta motores se Obj >= 70 °C"]
-        M_FAIL["Watchdog Failsafe (1000ms):<br/>Mais de 1s sem comando?<br/>Zera imediatamente GPIOs 26, 27, 14 e 13"]
+1. **Por que não precisa configurar IP fixo (`192.168.4.1`) no código da ESP32?**
+   - Quando o **Galaxy A20** liga o **Roteador Wi-Fi (`robo_ugv`)**, o próprio celular vira o servidor DHCP da rede (normalmente na faixa **`192.168.43.1`**).
+   - A ESP32 se conecta em modo `WIFI_STA` via `WiFi.begin("robo_ugv", "12345678")` e **recebe o IP automaticamente via DHCP do Galaxy A20** (sem precisar das constantes antigas `192.168.4.1`).
+   - Além do IP numérico, a ESP32 registra o endereço **`http://ugv.local`** via mDNS, e o próprio painel descobre o IP da câmera do A20 automaticamente lendo o Gateway da rede (`WiFi.gatewayIP()`, ex.: `192.168.43.1:8080/video`).
 
-        M_SETUP --> M_LOOP
-        M_LOOP --> M_CMD --> M_PWM
-        M_LOOP --> M_TEST --> M_PWM
-        M_LOOP --> M_TEMP
-        M_LOOP --> M_FAIL
-    end
+2. **Por que a latência fica estável nessa arquitetura?**
+   - O vídeo pesado (`MJPEG`) vai **direto do Galaxy A20 para o Notebook** (não passa por dentro da ESP32 na caixa fechada).
+   - A ESP32 trafega apenas pacotes minúsculos de comando (`/cmd`) e telemetria (`/temp`).
 
-    subgraph SLAVE["ESP32-CAM (Slave — Vídeo Dedicado na Proa)"]
-        S_SETUP["Setup Slave:<br/>• Pinos 12, 13, 14, 15, U0T e U0R desconectados (Boot limpo)<br/>• Inicia Câmera OV2640 (QVGA Leve + CAMERA_GRAB_LATEST)<br/>• Conecta no Wi-Fi da Master e abre Porta 81"]
-        S_STREAM["Rota /stream (Porta 81):<br/>Envia vídeo MJPEG contínuo ao vivo"]
+---
 
-        S_SETUP --> S_STREAM
-    end
+## 2. Mapeamento Oficial de Comandos (Teclado e Controle Gamepad)
 
-    subgraph PAINEL["Navegador do Operador (Celular ou PC)"]
-        UI["Painel Web Unificado<br/>(http://192.168.4.1)"]
-    end
+| Função no Robô | Teclado (PC) | PlayStation (PS5 / PS4) | Xbox / Machenike G5Pro |
+| :--- | :--- | :--- | :--- |
+| **Acelerar (Frente)** | `W` ou `▲` | **`R2`** (`buttons[7]`) | **`RT`** (`buttons[7]`) |
+| **Freio / Ré (Lógica Forza)** | `S` ou `▼` | **`L2`** (1º toque freia, segurar ~320ms dá ré) | **`LT`** (1º toque freia, segurar ~320ms dá ré) |
+| **Direção (Esquerda / Direita)** | `A` / `D` ou `◀` / `▶` | **Analógico Esquerdo (`◀/▶`)** | **Analógico Esquerdo (`◀/▶`)** |
+| **Direção Completa (Setas)** | `▲` `▼` `◀` `▶` | **D-Pad (`▲` `▼` `◀` `▶`)** | **D-Pad (`▲` `▼` `◀` `▶`)** |
+| **Curva Suave em Movimento** | `W+A` / `W+D` (`▲+◀` / `▲+▶`) | **`R2` + Analógico Esquerdo** | **`RT` + Analógico Esquerdo** |
+| **Freio Total (Emergência)** | `Espaço` | **`L1`** (`buttons[4]`) | **`LB`** (`buttons[4]`) |
+| **Ligar / Desligar Faróis 12V** | `L` | **Triângulo (`△`)** (`buttons[3]`) | **`Y`** (`buttons[2]` no Machenike / `buttons[3]` no Xbox) |
+| **Auto-Teste de Bancada** | `T` | Botão na tela | Botão na tela |
+| **Analógico Direito** | — | **100% Desativado** | **100% Desativado** (com filtro `ax[6]/ax[7]` no Machenike `0079-181c`) |
 
-    UI -->|"Comandos Joystick / WASD (/cmd)"| M_CMD
-    UI -->|"Botão Testar Motores (/test)"| M_TEST
-    M_TEMP -->|"JSON Telemetria (/temp a cada 500ms)"| UI
-    S_STREAM -->|"Stream de Vídeo MJPEG (:81/stream)"| UI
+---
+
+## 3. Ciclo Completo Passo a Passo para Testar
+
+### Passo 1 — Configurar o Hotspot e o IP Webcam no Galaxy A20
+1. No **Galaxy A20**, abra **Configurações > Conexões > Roteador Wi-Fi e Ancoragem > Roteador Wi-Fi**:
+   - **Nome da rede:** `robo_ugv`
+   - **Senha:** `12345678`
+   - **Banda:** `2.4 GHz`
+   - Ative o **Roteador Wi-Fi**. *(Observação: no Galaxy A20 não precisa nem ter chip/dados móveis ligados para a rede local funcionar).*
+2. Abra o app **IP Webcam** no Galaxy A20:
+   - Em **Video preferences**: Resolução `640x480`, Quality `50`, FPS limit `15` ou `20`, Orientation `Landscape`.
+   - Em **Audio mode**: `Disabled`.
+   - Role até o final e toque em **`Start server`**.
+   - Anote o IP exibido na parte inferior da tela (no Galaxy A20 com Hotspot ligado, quase sempre é **`http://192.168.43.1:8080`**).
+
+### Passo 2 — Compilar e Gravar a ESP32 DevKit V1
+No terminal do VS Code dentro da pasta `/home/tacio/dev/academic/robo-inspetor`:
+```bash
+pio run -e esp32_hardware -t clean && pio run -e esp32_hardware -t upload
 ```
 
----
+### Passo 3 — Ligar o Robô e Conectar o Notebook no Hotspot do A20
+1. Ligue a **Chave Gangorra KCD1** do robô — a ESP32 vai se conectar sozinha no Hotspot **`robo_ugv`** do Galaxy A20 (você verá **1 aparelho conectado** na tela de Roteador Wi-Fi do A20).
+2. Conecte o seu **Notebook** na mesma rede Wi-Fi **`robo_ugv`** (senha `12345678`).
+3. Conecte o controle (**Machenike G5Pro / PS5 / Xbox**) no Notebook.
+4. Abra o navegador do Notebook em qualquer uma das 3 opções abaixo:
+   - **Opção A (automática via mDNS):** acesse **`http://ugv.local`**
+   - **Opção B (pelo IP da ESP32):** toque no nome da ESP32 dentro da lista de *Aparelhos Conectados* do Roteador Wi-Fi do Galaxy A20 (ou olhe no Monitor Serial) e acesse `http://192.168.43.XXX`
+   - **Opção C (arquivo local):** abra direto o arquivo `web/index.html` no navegador do seu computador (ele já se comunica automaticamente com `http://ugv.local`).
+5. O vídeo da câmera do A20 (`192.168.43.1:8080/video`) já entra automático pelo Gateway; se precisar trocar, basta digitar o IP no campo **`IP CELULAR`** no topo da tela e clicar em **`Conectar`**.
 
-## 2. Passo a Passo de Operação (Do Ligar ao Primeiro Teste)
-
-### Passo 1 — Ligar a Chave Gangorra KCD1 (Energização)
-1. Ao ligar a **Chave KCD1**, a corrente passa pelo **Fusível de 15A** e alimenta o **Chicote Principal 12V**.
-2. O **Cooler 80mm (12V)** gira continuamente e o **Voltímetro Digital de 3 Fios** mostra a tensão da bateria 3S2P no chassi.
-3. O **Step-Up 400W** entrega **24V** ao borne `12V/VCC` da Ponte H L298N.
-4. O **Step-Down LM2596** entrega **5V** por 2 fios: um vai direto ao borne `5V` da L298N e o outro alimenta o **Trilho Vermelho (`+`) da Protoboard** (ligando a ESP32 DevKit V1 e a ESP32-CAM).
-
-### Passo 2 — Conectar no Wi-Fi do Robô e Abrir o Painel
-1. No seu celular ou notebook, conecte na rede Wi-Fi criada pela ESP32 DevKit V1:
-   - **Rede (SSID):** `ROBO_INSPETOR_UGV`
-   - **Senha:** `12345678`
-2. Abra o navegador e acesse:
-   ```text
-   http://192.168.4.1
-   ```
-
-### Passo 3 — Executar o Primeiro Teste de Motores e Faróis (`Botão Testar Motores` ou `Tecla T`)
-1. Com as rodas/polias livres do chão, clique no botão **`Testar Motores (T)`** no Painel Web (ou digite **`t`** no Monitor Serial do VS Code).
-2. A ESP32 DevKit V1 testa automaticamente cada saída na ordem abaixo:
-   - **Pisca os 2 Faróis Olho de Águia 12V** (`OUT+` / `OUT-` do Módulo MOSFET `XY-MOS` via fio cinza na `GPIO 25`).
-   - **Gira o Motor Esquerdo para FRENTE** por `400 ms` (`IN 1` — fio cinza na `GPIO 26`) e para.
-   - **Gira o Motor Esquerdo para RÉ** por `400 ms` (`IN 2` — fio azul na `GPIO 27`) e para.
-   - **Gira o Motor Direito para FRENTE** por `400 ms` (`IN 3` — fio amarelo na `GPIO 14`) e para.
-   - **Gira o Motor Direito para RÉ** por `400 ms` (`IN 4` — fio verde na `GPIO 13`) e para.
-
-### Passo 4 — Pilotagem Normal e Travas Automáticas
-1. **Movimentação:** Use o **Joystick Virtual** na tela ou as teclas **`W, A, S, D`** (e **`Espaço`** para frear).
-2. **Faróis 12V:** Clique no botão **`Farol 12V (L)`** ou mova a barra deslizante para regular o brilho em PWM no módulo `XY-MOS`.
-3. **Proteção Térmica (`GPIO 21/22`):**
-   - **`>= 50 °C`:** Exibe alerta amarelo na tela.
-   - **`>= 70 °C`:** Corta os motores imediatamente.
-4. **Watchdog Failsafe (`1000 ms`):** Se ficar mais de **1 segundo** sem receber comando, a ESP32 DevKit V1 zera os 4 pinos da Ponte H automaticamente.
+### Passo 4 — Checklist Rápido na Pista
+1. **Aperte qualquer botão do controle:** o badge do Joystick muda para **`CONTROLE [STD]`** ou **`CONTROLE [RAW]`**.
+2. **Acelerar (`RT` / `R2` ou `W` / `▲`):** robô avança em linha reta.
+3. **Esquerda / Direita (`Analógico Esquerdo` ou `◀/▶`):** andando faz curva suave sem parar; parado gira no eixo.
+4. **Freio + Ré Forza (`LT` / `L2`):** andando para frente, 1 toque freia; segurar ~0,3s engata a ré.
+5. **Freio Total (`LB` / `L1` ou `Espaço`)** e **Faróis (`Y` / `△` ou `L`)**.

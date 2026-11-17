@@ -86,8 +86,10 @@ void runBenchCheckup() {
         Serial.println("[1/6] Sensor MLX90614 (GPIO 21/22): SEM RESPOSTA! Verifique 3V3, GND, SDA(21), SCL(22) e resistores 4.7k.");
     }
 
-    uint8_t stCount = WiFi.softAPgetStationNum();
-    Serial.printf("[2/6] Dispositivos conectados no Wi-Fi ROBO_INSPETOR_UGV: %u\n", stCount);
+    bool wifiOk = (WiFi.status() == WL_CONNECTED);
+    Serial.printf("[2/6] Hotspot '%s': %s (IP: %s | RSSI: %d dBm)\n",
+                  WIFI_AP_SSID, wifiOk ? "CONECTADO" : "DESCONECTADO",
+                  WiFi.localIP().toString().c_str(), WiFi.RSSI());
 
     Serial.println("[3/6] Piscando Farol 12V no Modulo MOSFET (GPIO 25)...");
     ledcWrite(PWM_CH_HEADLIGHT, 255);
@@ -124,7 +126,7 @@ void setup() {
     runSelfTest();
 
     telemetryServer.beginMaster(&motors);
-    Serial.println("[WEB] Painel Master ativo em http://192.168.4.1 (Rotas: /, /cmd, /temp, /test, /status).");
+    Serial.println("[WEB] Servidor HTTP ativo (Rotas: /, /cmd, /temp, /test, /status).");
 }
 
 void loop() {
@@ -206,7 +208,7 @@ void loop() {
     telem.headlight_pwm = telemetryServer.getHeadlightBrightness();
     telem.watchdog_alert = motors.isWatchdogTriggered();
     telem.wifi_rssi = WiFi.RSSI();
-    telem.wifi_clients = WiFi.softAPgetStationNum();
+    telem.wifi_clients = (WiFi.status() == WL_CONNECTED) ? 1 : 0;
 
     telemetryServer.updateMaster(telem);
 
