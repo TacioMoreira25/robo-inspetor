@@ -63,12 +63,23 @@
 #define MOTOR_RAMP_INTERVAL_MS      20      // Atualização da rampa a 50 Hz
 #define MOTOR_DEADBAND              35      // PWM mínimo para vencer o atrito das esteiras
 
+// Compatibilidade LEDC entre Arduino-ESP32 Core 2.x e Core 3.x
+#if defined(ESP_ARDUINO_VERSION_MAJOR) && (ESP_ARDUINO_VERSION_MAJOR >= 3)
+    #define PWM_ATTACH_CH(pin, freq, res, ch) ledcAttachChannel((pin), (freq), (res), (ch))
+    #define PWM_WRITE_CH(ch, duty)            ledcWriteChannel((ch), (duty))
+    #define PWM_DETACH_PIN(pin)               ledcDetach((pin))
+#else
+    #define PWM_ATTACH_CH(pin, freq, res, ch) do { ledcSetup((ch), (freq), (res)); ledcAttachPin((pin), (ch)); } while (0)
+    #define PWM_WRITE_CH(ch, duty)            ledcWrite((ch), (duty))
+    #define PWM_DETACH_PIN(pin)               ledcDetachPin((pin))
+#endif
+
 // =============================================================================
 // 4. TEMPORIZADORES E WATCHDOG FAILSAFE (CÃO DE GUARDA DE 1 SEGUNDO)
 // =============================================================================
-#define FAILSAFE_TIMEOUT_MS         3000    // 1000 ms (1 segundo) sem comando corta os motores
+#define FAILSAFE_TIMEOUT_MS         3000    // 3000 ms sem comando corta os motores
 #define TELEMETRY_INTERVAL_MS       500     // Período de atualização de telemetria (500 ms)
-#define SENSOR_READ_INTERVAL_MS     100     // Leitura térmica I2C a 10 Hz (100 ms)
+#define SENSOR_READ_INTERVAL_MS     250     // Leitura térmica I2C a 4 Hz (250 ms) para reduzir bloqueio do loop HTTP
 #define SERIAL_BAUD_RATE            115200
 
 // =============================================================================

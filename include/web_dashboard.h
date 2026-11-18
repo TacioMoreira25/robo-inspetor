@@ -607,12 +607,12 @@ canvas#joy:active { cursor: grabbing; }
         <div class="brand">
             <div class="brand-dot" id="conn_dot"></div>
             <span class="brand-title">UGV INSPETOR</span>
-            <span class="brand-sub">MASTER 192.168.4.1</span>
+            <span class="brand-sub" id="esp_ip_lbl">UGV.LOCAL</span>
         </div>
         <div class="cam-config-bar">
-            <span class="cam-config-lbl">CAM</span>
-            <input id="cam_ip_input" type="text" placeholder="192.168.4.2" onkeydown="if(event.key==='Enter') updateCameraUrl()">
-            <button class="btn-reconnect-cam" style="margin-top:0;padding:3px 8px;font-size:10px;" onclick="updateCameraUrl()">OK</button>
+            <span class="cam-config-lbl">IP CELULAR</span>
+            <input id="cam_ip_input" type="text" placeholder="Ex: 192.168.43.1" onkeydown="if(event.key==='Enter') updateCameraUrl()">
+            <button class="btn-reconnect-cam" style="margin-top:0;padding:3px 8px;font-size:10px;" onclick="updateCameraUrl()">Conectar</button>
         </div>
         <div class="top-metrics">
             <div class="pill">
@@ -628,12 +628,12 @@ canvas#joy:active { cursor: grabbing; }
                 <span class="pill-val" id="upt">00:00:00</span>
             </div>
             <div class="pill">
-                <span class="pill-label">REDE WI-FI:</span>
-                <span class="pill-val">ROBO_INSPETOR_UGV</span>
+                <span class="pill-label">HOTSPOT:</span>
+                <span class="pill-val">robo_ugv</span>
             </div>
             <div class="pill">
-                <span class="pill-label">DISPOSITIVOS:</span>
-                <span class="pill-val" id="wcli">0</span>
+                <span class="pill-label">SINAL ESP:</span>
+                <span class="pill-val" id="wcli">-- dBm</span>
             </div>
             <div class="pill">
                 <span class="pill-label">WATCHDOG (1S):</span>
@@ -784,14 +784,16 @@ let dragging = false;
 let joyX = 0, joyY = 0;
 let driveInterval = null;
 
-const DEFAULT_CAM_ADDR = '192.168.4.2:8080/video';
+const DEFAULT_CAM_ADDR = '192.168.43.1:8080/video';
 let currentCamUrl = 'http://' + DEFAULT_CAM_ADDR;
+let camAutoDetected = false;
+const API_BASE = (location.protocol === 'file:') ? 'http://ugv.local' : '';
 
 function normalizeCamUrl(raw) {
     let v = (raw || '').trim();
     if (!v) v = DEFAULT_CAM_ADDR;
     if (!/^https?:\/\//i.test(v)) v = 'http://' + v;
-    // Se o usuário digitou só o IP (ex: 192.168.4.2), completa porta e rota padrão do IP Webcam
+    // Se o usuário digitou só o IP (ex: 192.168.43.1), completa porta e rota padrão do IP Webcam
     if (/^https?:\/\/[^/:]+$/i.test(v)) v += ':8080/video';
     else if (/^https?:\/\/[^/]+:\d+$/i.test(v)) v += '/video';
     return v;
@@ -809,17 +811,20 @@ function updateCameraUrl() {
     const input = document.getElementById('cam_ip_input');
     const raw = input ? input.value.trim() : '';
     const finalUrl = normalizeCamUrl(raw || DEFAULT_CAM_ADDR);
+    camAutoDetected = true;
     try { localStorage.setItem('ugv_cam_url', finalUrl); } catch (_) {}
     if (input) input.value = finalUrl.replace(/^https?:\/\//i, '');
     applyCameraUrl(finalUrl, true);
 }
 
 window.addEventListener('DOMContentLoaded', () => {
-    let saved = DEFAULT_CAM_ADDR;
-    try { saved = localStorage.getItem('ugv_cam_url') || DEFAULT_CAM_ADDR; } catch (_) {}
+    let saved = '';
+    try { saved = localStorage.getItem('ugv_cam_url') || ''; } catch (_) {}
+    if (saved) camAutoDetected = true;
+    const addr = saved || DEFAULT_CAM_ADDR;
     const input = document.getElementById('cam_ip_input');
-    if (input) input.value = saved.replace(/^https?:\/\//i, '');
-    applyCameraUrl(saved, false);
+    if (input) input.value = addr.replace(/^https?:\/\//i, '');
+    applyCameraUrl(addr, false);
 });
 
 // Estado do vídeo: a classe "live" no palco exibe a imagem e a mira
@@ -877,7 +882,7 @@ drawJoystick(0, 0);
 function sendCmd(x, y, lightVal) {
     document.getElementById('jx').innerText = x;
     document.getElementById('jy').innerText = y;
-    let url = '/cmd?x=' + x + '&y=' + y;
+    let url = API_BASE + '/cmd?x=' + x + '&y=' + y;
     if (lightVal !== undefined) url += '&light=' + lightVal;
     const opts = (typeof AbortSignal !== 'undefined' && AbortSignal.timeout)
         ? { signal: AbortSignal.timeout(350) } : undefined;
@@ -957,7 +962,7 @@ function runBenchTest() {
     const btn = document.getElementById('btn_test');
     btn.classList.add('active');
     setTimeout(() => btn.classList.remove('active'), 2200);
-    fetch('/test').catch(() => {});
+    fetch(API_BASE + '/test').catch(() => {});
 }
 
 function emergencyBrake() {
@@ -1218,10 +1223,22 @@ function setLink(ok, rtt) {
 
 setInterval(() => {
     const t0 = performance.now();
-    fetch('/temp', { signal: AbortSignal.timeout(1500) }).then(r => r.json()).then(d => {
+    fetch(API_BASE + '/temp', { signal: AbortSignal.timeout(1500) }).then(r => r.json()).then(d => {
         failCount = 0;
         setLink(true, Math.round(performance.now() - t0));
         if (d.uptime !== undefined) document.getElementById('upt').innerText = fmtUptime(d.uptime);
+        if (d.ip) {
+            const ipLbl = document.getElementById('esp_ip_lbl');
+            if (ipLbl) ipLbl.innerText = 'ESP ' + d.ip;
+        }
+        // No Hotspot do Galaxy A20, o próprio celular é o Gateway (d.gw, ex: 192.168.43.1): preenche a câmera automaticamente
+        if (d.gw && d.gw !== '0.0.0.0' && !camAutoDetected) {
+            camAutoDetected = true;
+            const input = document.getElementById('cam_ip_input');
+            const gwCam = d.gw + ':8080/video';
+            if (input) input.value = gwCam;
+            applyCameraUrl(gwCam, false);
+        }
         const i2cEl = document.getElementById('i2c_ok');
         if (d.valid) {
             i2cEl.innerText = 'ONLINE (0x5A)';
@@ -1263,7 +1280,7 @@ setInterval(() => {
         document.getElementById('bar_mL').style.width = (Math.abs(mL) / 255 * 100) + '%';
         document.getElementById('bar_mR').style.width = (Math.abs(mR) / 255 * 100) + '%';
 
-        document.getElementById('wcli').innerText = d.clients + (d.clients >= 2 ? ' (CAM+OP)' : '');
+        document.getElementById('wcli').innerText = (d.rssi !== undefined) ? (d.rssi + ' dBm') : (d.clients || 0);
 
         const wd = document.getElementById('wd');
         if (d.watchdog) {

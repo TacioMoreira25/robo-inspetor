@@ -101,21 +101,47 @@ function drawJoystick(normX, normY) {
 }
 drawJoystick(0, 0);
 
-function sendCmd(x, y, lightVal) {
-    document.getElementById('jx').innerText = x;
-    document.getElementById('jy').innerText = y;
+let cmdInFlight = false;
+let pendingCmd = null;
+let lastSentX = 0, lastSentY = 0;
+
+function dispatchCmd(x, y, lightVal) {
+    cmdInFlight = true;
+    lastSentX = x;
+    lastSentY = y;
     let url = API_BASE + '/cmd?x=' + x + '&y=' + y;
     if (lightVal !== undefined) url += '&light=' + lightVal;
     const opts = (typeof AbortSignal !== 'undefined' && AbortSignal.timeout)
-        ? { signal: AbortSignal.timeout(350) } : undefined;
-    fetch(url, opts).catch(() => {});
+        ? { signal: AbortSignal.timeout(300) } : undefined;
+    fetch(url, opts).catch(() => {}).finally(() => {
+        cmdInFlight = false;
+        if (pendingCmd) {
+            const next = pendingCmd;
+            pendingCmd = null;
+            dispatchCmd(next.x, next.y, next.lightVal);
+        }
+    });
+}
+
+function sendCmd(x, y, lightVal) {
+    document.getElementById('jx').innerText = x;
+    document.getElementById('jy').innerText = y;
+    if (cmdInFlight) {
+        pendingCmd = {
+            x,
+            y,
+            lightVal: (lightVal !== undefined) ? lightVal : (pendingCmd ? pendingCmd.lightVal : undefined)
+        };
+        return;
+    }
+    dispatchCmd(x, y, lightVal);
 }
 
 function startContinuousSend() {
     if (!driveInterval) {
         driveInterval = setInterval(() => {
             if (joyX !== 0 || joyY !== 0) sendCmd(joyX, joyY);
-        }, 80);
+        }, 120);
     }
 }
 
@@ -136,10 +162,14 @@ function updatePos(clientX, clientY) {
     const normX = (dist * Math.cos(angle)) / maxDist;
     const normY = (dist * Math.sin(angle)) / maxDist;
 
-    joyX = Math.round(normX * 255);
-    joyY = Math.round(normY * 255);
+    const newX = Math.round(normX * 255);
+    const newY = Math.round(normY * 255);
     drawJoystick(normX, normY);
-    sendCmd(joyX, joyY);
+    if (newX !== joyX || newY !== joyY) {
+        joyX = newX;
+        joyY = newY;
+        sendCmd(joyX, joyY);
+    }
 }
 
 canvas.addEventListener('pointerdown', e => {
@@ -295,26 +325,37 @@ window.addEventListener('gamepaddisconnected', () => {
 });
 
 setInterval(() => {
-    if (!navigator.getGamepads) return;
+    const tag = document.getElementById('joy_mode');
+    if (!navigator.getGamepads) {
+        if (tag && tag.innerText !== 'GP BLOQ (HTTP)') tag.innerText = 'GP BLOQ (HTTP)';
+        return;
+    }
     const pads = navigator.getGamepads();
     let pad = null;
     for (let i = 0; i < pads.length; i++) {
-        if (pads[i] && pads[i].connected) { pad = pads[i]; break; }
+        const p = pads[i];
+        if (!p || !p.connected) continue;
+        const hasInput = p.buttons.some(b => b && (b.pressed || b.value > 0.15)) ||
+                         p.axes.some(a => Math.abs(a || 0) > 0.2);
+        if (hasInput) { pad = p; break; }
+        if (!pad || (pad.mapping !== 'standard' && p.mapping === 'standard')) pad = p;
     }
     if (!pad) return;
 
-    const tag = document.getElementById('joy_mode');
     const modeLbl = (pad.mapping === 'standard') ? 'CONTROLE [STD]' : 'CONTROLE [RAW]';
-    if (tag && tag.innerText !== modeLbl) tag.innerText = modeLbl;
+    if (tag && !gpActive && tag.innerText !== modeLbl) tag.innerText = modeLbl;
 
-    const isMachenikeHid = /0079-181c|MACHENIKE/i.test(pad.id || '') && pad.axes.length >= 8;
+    const isMachenikeHid = /0079-181c/i.test(pad.id || '') && pad.axes.length >= 8;
 
     // Botão 4 (LB/L1) = Freio total (mantém parado enquanto segurar); Botão Y/Triângulo = Faróis
     // (No Machenike 0079-181c, X e Y vêm invertidos: b[3]=X e b[2]=Y)
     const btnBrake = !!(pad.buttons[4] && pad.buttons[4].pressed);
     if (btnBrake && !gpPrevBtnBrake) emergencyBrake();
     gpPrevBtnBrake = btnBrake;
-    if (btnBrake) return;
+    if (btnBrake) {
+        if (tag) tag.innerText = 'CONTROLE [FREIO]';
+        return;
+    }
 
     const lightBtnIdx = isMachenikeHid ? 2 : 3;
     const btnLight = !!(pad.buttons[lightBtnIdx] && pad.buttons[lightBtnIdx].pressed);
@@ -443,9 +484,12 @@ function setLink(ok, rtt) {
     lat.className = 'pill-val ' + (rtt < 80 ? 'status-ok' : rtt < 200 ? 'status-warn' : 'status-crit');
 }
 
+let tempInFlight = false;
 setInterval(() => {
+    if (tempInFlight) return;
+    tempInFlight = true;
     const t0 = performance.now();
-    fetch(API_BASE + '/temp', { signal: AbortSignal.timeout(1500) }).then(r => r.json()).then(d => {
+    fetch(API_BASE + '/temp', { signal: AbortSignal.timeout(1200) }).then(r => r.json()).then(d => {
         failCount = 0;
         setLink(true, Math.round(performance.now() - t0));
         if (d.uptime !== undefined) document.getElementById('upt').innerText = fmtUptime(d.uptime);
@@ -514,5 +558,7 @@ setInterval(() => {
         }
     }).catch(() => {
         if (++failCount >= 3) setLink(false);
+    }).finally(() => {
+        tempInFlight = false;
     });
 }, 500);
