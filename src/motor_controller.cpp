@@ -35,20 +35,16 @@ void MotorController::begin() {
 
     // Configura os 4 canais internos de PWM da ESP32 (1500 Hz, escala de 0 a 255)
     // Canal 0 -> GPIO 26 (IN1 - Motor Esquerdo Frente)
-    ledcSetup(PWM_CH_LEFT_IN1, PWM_FREQ_HZ, PWM_RESOLUTION_BITS);
-    ledcAttachPin(PIN_MOTOR_LEFT_IN1, PWM_CH_LEFT_IN1);
+    ledcAttachChannel(PIN_MOTOR_LEFT_IN1, PWM_FREQ_HZ, PWM_RESOLUTION_BITS, PWM_CH_LEFT_IN1);
 
     // Canal 1 -> GPIO 27 (IN2 - Motor Esquerdo Ré)
-    ledcSetup(PWM_CH_LEFT_IN2, PWM_FREQ_HZ, PWM_RESOLUTION_BITS);
-    ledcAttachPin(PIN_MOTOR_LEFT_IN2, PWM_CH_LEFT_IN2);
+    ledcAttachChannel(PIN_MOTOR_LEFT_IN2, PWM_FREQ_HZ, PWM_RESOLUTION_BITS, PWM_CH_LEFT_IN2);
 
     // Canal 2 -> GPIO 14 (IN3 - Motor Direito Frente)
-    ledcSetup(PWM_CH_RIGHT_IN3, PWM_FREQ_HZ, PWM_RESOLUTION_BITS);
-    ledcAttachPin(PIN_MOTOR_RIGHT_IN3, PWM_CH_RIGHT_IN3);
+    ledcAttachChannel(PIN_MOTOR_RIGHT_IN3, PWM_FREQ_HZ, PWM_RESOLUTION_BITS, PWM_CH_RIGHT_IN3);
 
     // Canal 3 -> GPIO 13 (IN4 - Motor Direito Ré)
-    ledcSetup(PWM_CH_RIGHT_IN4, PWM_FREQ_HZ, PWM_RESOLUTION_BITS);
-    ledcAttachPin(PIN_MOTOR_RIGHT_IN4, PWM_CH_RIGHT_IN4);
+    ledcAttachChannel(PIN_MOTOR_RIGHT_IN4, PWM_FREQ_HZ, PWM_RESOLUTION_BITS, PWM_CH_RIGHT_IN4);
 
     _last_heartbeat_ms = millis();
     emergencyStop(); // Garante que os motores iniciem 100% parados no boot
@@ -92,16 +88,16 @@ void MotorController::applyHBridge4Pin(uint8_t ch_in_a, uint8_t ch_in_b, int16_t
 
     if (speed > 0) {
         // Giro para FRENTE linear (sem degrau artificial que anula curvas suaves)
-        ledcWrite(ch_in_a, duty);
-        ledcWrite(ch_in_b, 0);
+        ledcWriteChannel(ch_in_a, duty);
+        ledcWriteChannel(ch_in_b, 0);
     } else if (speed < 0) {
         // Giro para RÉ linear
-        ledcWrite(ch_in_a, 0);
-        ledcWrite(ch_in_b, duty);
+        ledcWriteChannel(ch_in_a, 0);
+        ledcWriteChannel(ch_in_b, duty);
     } else {
         // PARADO: 0V em ambos os pinos
-        ledcWrite(ch_in_a, 0);
-        ledcWrite(ch_in_b, 0);
+        ledcWriteChannel(ch_in_a, 0);
+        ledcWriteChannel(ch_in_b, 0);
     }
 }
 
@@ -182,19 +178,19 @@ void MotorController::emergencyStop() {
     _current_left = 0;
     _current_right = 0;
 
-    ledcWrite(PWM_CH_LEFT_IN1, 0);
-    ledcWrite(PWM_CH_LEFT_IN2, 0);
-    ledcWrite(PWM_CH_RIGHT_IN3, 0);
-    ledcWrite(PWM_CH_RIGHT_IN4, 0);
+    ledcWriteChannel(PWM_CH_LEFT_IN1, 0);
+    ledcWriteChannel(PWM_CH_LEFT_IN2, 0);
+    ledcWriteChannel(PWM_CH_RIGHT_IN3, 0);
+    ledcWriteChannel(PWM_CH_RIGHT_IN4, 0);
 }
 
 // Envia um pulso curto para 1 pino específico (usado no Auto-Teste de Bancada - Tecla T)
 void MotorController::pulseSinglePin(uint8_t ch, uint8_t pwm_duty, uint16_t duration_ms) {
     emergencyStop();
     resetWatchdog();
-    ledcWrite(ch, pwm_duty);
+    ledcWriteChannel(ch, pwm_duty);
     delay(duration_ms);
-    ledcWrite(ch, 0);
+    ledcWriteChannel(ch, 0);
     delay(150);
     resetWatchdog();
 }

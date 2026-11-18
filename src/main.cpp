@@ -65,9 +65,8 @@ void runSelfTest() {
 
     // 3. Prepara o canal PWM do Módulo MOSFET Duplo dos Faróis 12V (GPIO 25)
     pinMode(PIN_HEADLIGHT_PWM, OUTPUT);
-    ledcSetup(PWM_CH_HEADLIGHT, PWM_FREQ_HZ, PWM_RESOLUTION_BITS);
-    ledcAttachPin(PIN_HEADLIGHT_PWM, PWM_CH_HEADLIGHT);
-    ledcWrite(PWM_CH_HEADLIGHT, 0);
+    ledcAttachChannel(PIN_HEADLIGHT_PWM, PWM_FREQ_HZ, PWM_RESOLUTION_BITS, PWM_CH_HEADLIGHT);
+    ledcWriteChannel(PWM_CH_HEADLIGHT, 0);
     Serial.println("[OK] Modulo MOSFET Duplo (Farois 12V) configurado na GPIO 25.");
     Serial.println("[DICA] Digite 't' no Monitor Serial (ou clique em 'Testar Motores' no Painel Web) para testar cada canal individualmente!");
 
@@ -92,9 +91,9 @@ void runBenchCheckup() {
                   WiFi.localIP().toString().c_str(), WiFi.RSSI());
 
     Serial.println("[3/6] Piscando Farol 12V no Modulo MOSFET (GPIO 25)...");
-    ledcWrite(PWM_CH_HEADLIGHT, 255);
+    ledcWriteChannel(PWM_CH_HEADLIGHT, 255);
     delay(300);
-    ledcWrite(PWM_CH_HEADLIGHT, telemetryServer.getHeadlightBrightness());
+    ledcWriteChannel(PWM_CH_HEADLIGHT, telemetryServer.getHeadlightBrightness());
 
     Serial.println("[4/6] Pulso Motor ESQUERDO -> FRENTE (L298N IN1 = GPIO 26)...");
     motors.pulseSinglePin(PWM_CH_LEFT_IN1, 160, 400);

@@ -24,6 +24,8 @@ bool ThermalSensor::begin(int sda_pin, int scl_pin, uint32_t frequency) {
     if (!ok) {
         return false;
     }
+    // Limita o timeout I2C a 10 ms (padrão é 50 ms) para evitar travar o WebServer sob ruído EMI
+    Wire.setTimeOut(10);
     return ping();
 }
 

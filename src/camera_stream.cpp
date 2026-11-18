@@ -68,9 +68,8 @@ bool CameraStream::begin() {
     delay(100);
 
     // Diagnóstico I2C interno da câmera: gera XCLK em GPIO 0 (10 MHz) e sonda o barramento (GPIO 26/27)
-    ledcSetup(0, 10000000, 1);
-    ledcAttachPin(XCLK_GPIO_NUM, 0);
-    ledcWrite(0, 1);
+    ledcAttachChannel(XCLK_GPIO_NUM, 10000000, 1, 0);
+    ledcWriteChannel(0, 1);
     delay(20);
 
     Wire.begin(SIOD_GPIO_NUM, SIOC_GPIO_NUM, 100000);
@@ -93,7 +92,7 @@ bool CameraStream::begin() {
 
     // Libera os pinos para o driver oficial esp_camera_init() assumir sem conflito
     Wire.end();
-    ledcDetachPin(XCLK_GPIO_NUM);
+    ledcDetach(XCLK_GPIO_NUM);
     delay(20);
 
     camera_config_t config;

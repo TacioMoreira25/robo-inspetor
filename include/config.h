@@ -68,7 +68,7 @@
 // =============================================================================
 #define FAILSAFE_TIMEOUT_MS         3000    // 1000 ms (1 segundo) sem comando corta os motores
 #define TELEMETRY_INTERVAL_MS       500     // Período de atualização de telemetria (500 ms)
-#define SENSOR_READ_INTERVAL_MS     100     // Leitura térmica I2C a 10 Hz (100 ms)
+#define SENSOR_READ_INTERVAL_MS     250     // Leitura térmica I2C a 4 Hz (250 ms) para reduzir bloqueio do loop HTTP
 #define SERIAL_BAUD_RATE            115200
 
 // =============================================================================

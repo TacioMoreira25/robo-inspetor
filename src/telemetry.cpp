@@ -28,14 +28,22 @@ static bool g_mdns_started = false;
 
 // Conecta a ESP32 DevKit V1 no Hotspot Wi-Fi do Celular ("robo_ugv" / "12345678")
 static void setupMasterStation() {
+    WiFi.persistent(false);
     WiFi.mode(WIFI_STA);
     WiFi.setHostname(MDNS_HOSTNAME);
-    WiFi.begin(WIFI_AP_SSID, WIFI_AP_PASS);
 
-    // Otimizações Anti-Lag (desliga economia de energia do rádio) e potência máxima
+    // Otimizações Anti-Lag: desliga economia de energia do rádio (PS_NONE),
+    // fixa largura de banda HT20 (maior imunidade a ruído/reflexão sob a tampa)
+    // e usa 15 dBm para não saturar o receptor quando o celular está sobre a tampa.
     WiFi.setSleep(false);
-    WiFi.setTxPower(WIFI_POWER_19_5dBm);
+    esp_wifi_set_ps(WIFI_PS_NONE);
     esp_wifi_set_protocol(WIFI_IF_STA, WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N);
+    esp_wifi_set_bandwidth(WIFI_IF_STA, WIFI_BW_HT20);
+
+    WiFi.begin(WIFI_AP_SSID, WIFI_AP_PASS);
+    WiFi.setTxPower(WIFI_POWER_15dBm);
+    WiFi.setSleep(false);
+    esp_wifi_set_ps(WIFI_PS_NONE);
 
     Serial.printf("[REDE MASTER] Conectando ao Hotspot do celular '%s'...\n", WIFI_AP_SSID);
     uint32_t t0 = millis();
@@ -66,7 +74,7 @@ uint8_t TelemetryServer::getHeadlightBrightness() const {
 
 void TelemetryServer::setHeadlightBrightness(uint8_t val) {
     g_headlight_val = val;
-    ledcWrite(PWM_CH_HEADLIGHT, g_headlight_val);
+    ledcWriteChannel(PWM_CH_HEADLIGHT, g_headlight_val);
 }
 
 void TelemetryServer::beginMaster(MotorController *motor_ctrl) {
@@ -94,7 +102,7 @@ void TelemetryServer::beginMaster(MotorController *motor_ctrl) {
 
         if (server.hasArg("light")) {
             g_headlight_val = (uint8_t)constrain(server.arg("light").toInt(), 0, 255);
-            ledcWrite(PWM_CH_HEADLIGHT, g_headlight_val);
+            ledcWriteChannel(PWM_CH_HEADLIGHT, g_headlight_val);
         }
         server.send(200, "text/plain", "OK");
     });
@@ -129,15 +137,15 @@ void TelemetryServer::beginMaster(MotorController *motor_ctrl) {
         server.send(200, "text/plain", "Iniciando Auto-Teste de Bancada...");
         Serial.println("\n================ [AUTO-TESTE DE BANCADA] ================");
         Serial.println("[1/5] Testando Farois 12V no Modulo MOSFET (GPIO 25)...");
-        ledcWrite(PWM_CH_HEADLIGHT, 255);
+        ledcWriteChannel(PWM_CH_HEADLIGHT, 255);
         delay(300);
-        ledcWrite(PWM_CH_HEADLIGHT, g_headlight_val);
+        ledcWriteChannel(PWM_CH_HEADLIGHT, g_headlight_val);
 
         // DESLIGA CANAIS LEDC TEMPORARIAMENTE E TESTA COM NÍVEL LÓGICO PURO (DIGITAL HIGH/LOW)
-        ledcDetachPin(PIN_MOTOR_LEFT_IN1);
-        ledcDetachPin(PIN_MOTOR_LEFT_IN2);
-        ledcDetachPin(PIN_MOTOR_RIGHT_IN3);
-        ledcDetachPin(PIN_MOTOR_RIGHT_IN4);
+        ledcDetach(PIN_MOTOR_LEFT_IN1);
+        ledcDetach(PIN_MOTOR_LEFT_IN2);
+        ledcDetach(PIN_MOTOR_RIGHT_IN3);
+        ledcDetach(PIN_MOTOR_RIGHT_IN4);
 
         pinMode(PIN_MOTOR_LEFT_IN1, OUTPUT);
         pinMode(PIN_MOTOR_LEFT_IN2, OUTPUT);
@@ -172,10 +180,10 @@ void TelemetryServer::beginMaster(MotorController *motor_ctrl) {
         digitalWrite(PIN_MOTOR_RIGHT_IN4, LOW);
 
         // Reanexa os canais PWM
-        ledcAttachPin(PIN_MOTOR_LEFT_IN1, PWM_CH_LEFT_IN1);
-        ledcAttachPin(PIN_MOTOR_LEFT_IN2, PWM_CH_LEFT_IN2);
-        ledcAttachPin(PIN_MOTOR_RIGHT_IN3, PWM_CH_RIGHT_IN3);
-        ledcAttachPin(PIN_MOTOR_RIGHT_IN4, PWM_CH_RIGHT_IN4);
+        ledcAttachChannel(PIN_MOTOR_LEFT_IN1, PWM_FREQ_HZ, PWM_RESOLUTION_BITS, PWM_CH_LEFT_IN1);
+        ledcAttachChannel(PIN_MOTOR_LEFT_IN2, PWM_FREQ_HZ, PWM_RESOLUTION_BITS, PWM_CH_LEFT_IN2);
+        ledcAttachChannel(PIN_MOTOR_RIGHT_IN3, PWM_FREQ_HZ, PWM_RESOLUTION_BITS, PWM_CH_RIGHT_IN3);
+        ledcAttachChannel(PIN_MOTOR_RIGHT_IN4, PWM_FREQ_HZ, PWM_RESOLUTION_BITS, PWM_CH_RIGHT_IN4);
         Serial.println("================ [FIM DO AUTO-TESTE: MOTORES TRAVADOS EM 0] ================\n");
     });
 
@@ -216,10 +224,12 @@ void TelemetryServer::updateMaster(const RobotTelemetryState &state) {
         Serial.println(" ou http://ugv.local");
     } else if (WiFi.status() != WL_CONNECTED) {
         static uint32_t last_reconnect_ms = 0;
-        if (millis() - last_reconnect_ms > 4000) {
+        if (millis() - last_reconnect_ms > 8000) {
             last_reconnect_ms = millis();
-            WiFi.disconnect();
-            WiFi.begin(WIFI_AP_SSID, WIFI_AP_PASS);
+            WiFi.reconnect();
+            WiFi.setSleep(false);
+            esp_wifi_set_ps(WIFI_PS_NONE);
+            WiFi.setTxPower(WIFI_POWER_15dBm);
         }
     }
     server.handleClient();
