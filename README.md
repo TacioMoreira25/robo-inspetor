@@ -1,76 +1,81 @@
-# Robo Inspetor Terrestre (UGV) - Documentacao Oficial de Hardware e Firmware
+# Robô Inspetor Terrestre (UGV)
 
-Consolidacao oficial e definitiva da montagem fisica, distribuicao de energia, pinagem e operacao do **Robo Inspetor Terrestre (UGV)**.
+> **Plataforma robótica terrestre (UGV) de baixo custo para inspeção remota visual e termográfica preditiva — com chassi dielétrico em PETG (*CAD-as-Code*), firmware modular em ESP32 (PlatformIO), sensor infravermelho MLX90614 (I2C), Watchdog Failsafe e teleoperação via navegador (mDNS + W3C Gamepad API).**
 
----
-
-## 1. Arquitetura Geral do Hardware (Master / Slave)
-
-* **ESP32 DevKit V1 (Master — IP `192.168.4.1` / `192.168.1.100`):** Centraliza o controle da Ponte H L298N via 4 canais PWM (`GPIO 26, 27, 14, 13`), a leitura I2C do sensor termico MLX90614 (`GPIO 21, 22`), o acionamento dos farois via Modulo MOSFET (`GPIO 25`), o Dashboard Web e o *Watchdog Failsafe* de `1000 ms`.
-* **ESP32-CAM (Slave — IP `192.168.4.2` / `192.168.1.101`, Porta `81`):** Dedicada exclusivamente ao streaming de video MJPEG (`/stream`). Alimentada apenas pelos pinos `5V` e `GND`, mantendo os pinos `GPIO 12, 13, 14, 15, U0T e U0R` totalmente desconectados para evitar falha de inicializacao (*boot*).
-
----
-
-## 2. Distribuicao de Energia e Modulos de Potencia
-
-Toda a alimentacao parte da bateria **3S2P Li-Ion (~11.1V a 12.6V)** conectada via plugue **XT60**:
-
-| Subsistema / Modulo | Ligacao Positiva (`+`) | Ligacao Negativa (`GND`) | Saidas e Detalhes da Montagem |
-| --- | --- | --- | --- |
-| **Chicote Principal 12V** | Sai do `XT60 (+)` -> Chave Gangorra **KCD1** -> **Fusivel 15A** | Sai do `XT60 (-)` e divide-se para o `IN-` do Step-Up, `IN-` do Step-Down e `VIN-` do MOSFET | Alimenta em 12V o Step-Up, Step-Down, MOSFET, Voltimetro e Cooler 80mm. |
-| **Cooler / Fan 80mm (12V)** | Fio **Vermelho** direto no Chicote 12V pos-chave | Fio **Preto** no Trilho Azul (`-` GND) da protoboard | Fio amarelo (tacometro) isolado/sem uso. Gira continuamente ao ligar a chave. |
-| **Voltimetro Digital (3 Fios)** | Fios **Vermelho + Branco unidos** no Chicote 12V pos-chave | Fio **Preto** no Trilho Azul (`-` GND) da protoboard | Mede a tensao da bateria direto no painel fisico do chassi. |
-| **Modulo MOSFET (`XY-MOS V921`)** | Borne **`VIN+`** no Chicote 12V pos-chave | Borne **`VIN-`** no Chicote Negativo da bateria | • Borne **`OUT+`:** Recebe os **2 fios vermelhos (`+`)** dos Farois Olho de Aguia.<br>• Borne **`OUT-`:** Recebe os **2 fios pretos (`-`)** dos Farois Olho de Aguia.<br>• Furos logicos: `TRIG/PWM` no **`GPIO 25`** (fio cinza) e `GND` no Trilho `-` da protoboard. |
-| **Step-Up 400W (12V -> 24V)** | Borne **`IN+`** no Chicote 12V | • **`IN-`** no Chicote Negativo da bateria<br>• **`OUT-`** no borne `GND` da Ponte H L298N | Borne **`OUT+` (24V)** vai direto ao borne `12V/VCC` da Ponte H L298N. |
-| **Step-Down LM2596 (12V -> 5V)** | Borne **`IN+`** no Chicote 12V | • **`IN-`** no Chicote Negativo da bateria<br>• **`OUT-`** vai ao **Trilho Azul (`-`) da Protoboard** | Borne **`OUT+` (5V)** divide-se em **2 fios**: um vai para o **Trilho Vermelho (`+`) da Protoboard** e o outro vai **direto ao borne `5V` da Ponte H L298N**. |
-| **Ponte H L298N** | • Motores (`12V/VCC`): **24V** do Step-Up<br>• Logica (`5V`): **5V** direto do Step-Down | Borne **`GND`** recebe o `OUT-` do Step-Up **+ 1 fio** ligado ao Trilho Azul (`-`) da Protoboard | **Jumper regulador de 5V removido**. Jumpers `ENA` e `ENB` **mantidos fechados**. Bornes `OUT1/OUT2` (Motor Esq.) e `OUT3/OUT4` (Motor Dir.). |
+![ESP32](https://img.shields.io/badge/ESP32-E7352C?style=for-the-badge&logo=espressif&logoColor=white)
+![C++](https://img.shields.io/badge/C%2B%2B-00599C?style=for-the-badge&logo=cplusplus&logoColor=white)
+![PlatformIO](https://img.shields.io/badge/PlatformIO-FF7F00?style=for-the-badge&logo=platformio&logoColor=white)
+![Python](https://img.shields.io/badge/CAD--as--Code_(build123d)-3776AB?style=for-the-badge&logo=python&logoColor=white)
+![JavaScript](https://img.shields.io/badge/Web_Dashboard_(Gamepad_API)-323330?style=for-the-badge&logo=javascript&logoColor=F7DF1E)
 
 ---
 
-## 3. Barramentos da Protoboard e Pinagem das Placas
+## Protótipo Físico & Eletrônica Embarcada
 
-### A. Ligacoes nos Trilhos da Protoboard
-
-* **Trilho Vermelho (`+` 5V):**
-  * **Entrada:** Fio vindo do `OUT+` (5V) do Step-Down LM2596.
-  * **Saidas:** Capacitor Eletrolitico (lado positivo) + Jumper `VIN/5V` da ESP32 DevKit V1 + Fio `5V` da ESP32-CAM. *(O borne 5V da Ponte H vem direto da saida do Step-Down).*
-* **Trilho Azul (`-` GND Geral):**
-  * **Entrada:** Fio vindo do `OUT-` do Step-Down LM2596 (unificando o terra da bateria com a protoboard).
-  * **Saidas:** Capacitor Eletrolitico (lado da faixa negativa) + `GND` da ESP32 DevKit V1 (fio preto e branco) + `GND` da ESP32-CAM + `GND` do Sensor MLX90614 (fio azul) + Fio de `GND` da Ponte H L298N + Furo `GND` do Modulo MOSFET + Fio preto da Fan 80mm + Fio preto do Voltimetro.
+| Protótipo Montado (Chassi PETG 3D + Faróis + Cooler) | Eletrônica Interna (ESP32 + L298N + Step-Up/Down + Li-Ion 3S2P) |
+| :---: | :---: |
+| <img src="docs/img/ugv_exterior.jpg" width="420" alt="Robô Inspetor UGV montado" /> | <img src="docs/img/ugv_eletronica.jpg" width="420" alt="Eletrônica interna do Robô Inspetor UGV" /> |
 
 ---
 
-### B. Tabela Oficial de Pinos e Cores da ESP32 DevKit V1 (Master)
+## 1. Arquitetura Geral & Fluxo de Teleoperação
 
-| Pino na ESP32 DevKit V1 | Constante no Codigo (`config.h`) | Cor do Jumper Fisico | Onde esta Conectado (Destino) | Funcao no Sistema |
-| --- | --- | --- | --- | --- |
-| **`GPIO 26`** | `PIN_MOTOR_LEFT_IN1` | **Cinza** | Pino **`IN 1`** da Ponte H L298N | PWM Motor Esquerdo Sentido A (Canal LEDC 0) |
-| **`GPIO 27`** | `PIN_MOTOR_LEFT_IN2` | **Azul** | Pino **`IN 2`** da Ponte H L298N | PWM Motor Esquerdo Sentido B (Canal LEDC 1) |
-| **`GPIO 14`** | `PIN_MOTOR_RIGHT_IN3` | **Amarelo** | Pino **`IN 3`** da Ponte H L298N | PWM Motor Direito Sentido A (Canal LEDC 2) |
-| **`GPIO 13`** | `PIN_MOTOR_RIGHT_IN4` | **Verde** | Pino **`IN 4`** da Ponte H L298N | PWM Motor Direito Sentido B (Canal LEDC 3) |
-| **`GPIO 25`** | `PIN_HEADLIGHT_MOSFET` | **Cinza** (avulso) | Furo **`TRIG/PWM`** do Modulo MOSFET (`XY-MOS`) | Controle PWM/Digital dos Farois Olho de Aguia (Canal LEDC 4) |
-| **`GPIO 21` (`SDA`)** | `PIN_I2C_SDA` | **Amarelo** | Pino **`SDA`** do Sensor MLX90614 | Dados I2C + Resistor pull-up de `4.7kOhm` ligado ao `3V3` |
-| **`GPIO 22` (`SCL`)** | `PIN_I2C_SCL` | **Verde** | Pino **`SCL`** do Sensor MLX90614 | Clock I2C + Resistor pull-up de `4.7kOhm` ligado ao `3V3` |
-| **`3V3`** | — | **Laranja** | Pino **`VIN`** do Sensor MLX90614 | Alimenta o sensor em 3.3V e os 2 resistores de `4.7kOhm` |
-| **`VIN` (ou `5V`)** | — | **Branco / Vermelho** | **Trilho Vermelho (`+` 5V)** da Protoboard | Entrada de 5V da placa (retirar ao gravar via cabo USB) |
-| **`GND`** | — | **Preto e Branco** | **Trilho Azul (`-` GND)** da Protoboard | Terra comum de referencia (0V) |
+```mermaid
+flowchart LR
+    Op["Operador (Browser)\nW3C Gamepad API / Teclado"] -->|HTTP + mDNS (ugv.local)| ESP["ESP32 DevKit V1\n(Firmware + Dashboard + Watchdog 1000ms)"]
+    ESP -->|4x PWM (LEDC)| L298["Ponte H L298N\n(Tração 24V Skid-Steer)"]
+    ESP -->|I2C (SDA/SCL)| MLX["Sensor Térmico\nMLX90614 (IR)"]
+    ESP -->|PWM (GPIO 25)| MOS["Módulo MOSFET\n(Faróis LED 12V)"]
+    CAM["Câmera / Vídeo MJPEG"] -.->|Stream Tempo Real| Op
+```
 
----
-
-### C. Ligacoes da ESP32-CAM (Slave — Na Proa)
-
-* **Pino `5V`:** Conectado ao **Trilho Vermelho (`+` 5V)** da Protoboard.
-* **Pino `GND`:** Conectado ao **Trilho Azul (`-` GND)** da Protoboard.
-* **Pinos `GPIO 12, 13, 14, 15, U0T, U0R`:** Totalmente livres/desconectados.
+### Decisões Técnicas & Trade-offs
+| Desafio de Engenharia | Decisão Adotada | Por que esta escolha (Trade-off)? |
+| :--- | :--- | :--- |
+| **Quedas de tensão (*Brownout*)** na ESP32 durante partida dos motores | **Barramentos isolados:** Step-Up `24V` para potência + Step-Down `LM2596 5V` dedicado à lógica + capacitor eletrolítico | Evita reinicializações da ESP32 nos picos de corrente dos motoredutores DC `GB37-520`, mantendo terra comum (`GND`). |
+| **Segurança operacional** em perda de Wi-Fi ou superaquecimento | **Watchdog Failsafe (`1000 ms`)** + corte por sobretemperatura no `MLX90614` | Desliga automaticamente os 4 canais PWM se o operador perder conexão ou detectar anomalia térmica crítica. |
+| **Isolamento dielétrico e custo** (NR-10 / NR-12 / NR-33) | **Chassi monobloco em PETG** modelado via **CAD-as-Code (`build123d`)** | Reduz o custo de plataformas industriais (R$ 27k–750k) para **~R$ 754**, versionando a mecânica no Git e eliminando atrito metal-metal. |
+| **Descoberta em rede local** sem IP fixo e controle intuitivo | **mDNS (`ugv.local`)** + **W3C Gamepad API** (PS5/Xbox/USB) | Elimina configuração manual de IPs em campo e permite pilotagem analógica precisa direto no navegador. |
 
 ---
 
-## 4. Gravacao e Teste Rapido no VS Code (PlatformIO)
+## 2. Distribuição de Energia e Módulos de Potência
+
+Toda a alimentação parte da bateria **3S2P Li-Ion (~11.1V a 12.6V)** conectada via plugue **XT60**:
+
+| Subsistema / Módulo | Ligação Positiva (`+`) | Ligação Negativa (`GND`) | Saídas e Detalhes da Montagem |
+| :--- | :--- | :--- | :--- |
+| **Chicote Principal 12V** | `XT60 (+)` → Chave Gangorra **KCD1** → **Fusível 15A** | `XT60 (-)` dividido para `IN-` do Step-Up, `IN-` do Step-Down e `VIN-` do MOSFET | Alimenta em 12V o Step-Up, Step-Down, MOSFET, Voltímetro e Cooler 80mm. |
+| **Cooler / Fan 80mm (12V)** | Fio **Vermelho** direto no Chicote 12V pós-chave | Fio **Preto** no Trilho Azul (`-` GND) da protoboard | Fio amarelo (tacômetro) isolado. Gira continuamente ao ligar a chave. |
+| **Voltímetro Digital (3 Fios)** | Fios **Vermelho + Branco unidos** no Chicote 12V pós-chave | Fio **Preto** no Trilho Azul (`-` GND) da protoboard | Mede a tensão da bateria direto no painel físico do chassi. |
+| **Módulo MOSFET (`XY-MOS V921`)** | Borne **`VIN+`** no Chicote 12V pós-chave | Borne **`VIN-`** no Chicote Negativo da bateria | • **`OUT+` / `OUT-`:** Faróis Olho de Águia.<br>• Lógica: `TRIG/PWM` no **`GPIO 25`** e `GND` no Trilho `-`. |
+| **Step-Up 400W (12V → 24V)** | Borne **`IN+`** no Chicote 12V | **`IN-`** no Negativo da bateria; **`OUT-`** no `GND` da L298N | Borne **`OUT+` (24V)** vai direto ao borne `12V/VCC` da Ponte H L298N. |
+| **Step-Down LM2596 (12V → 5V)** | Borne **`IN+`** no Chicote 12V | **`IN-`** no Negativo da bateria; **`OUT-`** no **Trilho Azul (`-`)** | Borne **`OUT+` (5V)** alimenta o **Trilho Vermelho (`+`)** e o borne `5V` da L298N. |
+| **Ponte H L298N** | Motores: **24V** (Step-Up) / Lógica: **5V** (Step-Down) | **`GND`** recebe `OUT-` do Step-Up + fio para o Trilho Azul (`-`) | **Jumper regulador 5V removido**. Jumpers `ENA`/`ENB` fechados. `OUT1/2` (Motor Esq.) e `OUT3/4` (Motor Dir.). |
+
+---
+
+## 3. Pinagem Oficial — ESP32 DevKit V1 (Master)
+
+| Pino ESP32 | Constante (`config.h`) | Cor do Jumper | Destino | Função |
+| :--- | :--- | :--- | :--- | :--- |
+| **`GPIO 26`** | `PIN_MOTOR_LEFT_IN1` | Cinza | `IN 1` (L298N) | PWM Motor Esquerdo Sentido A (LEDC 0) |
+| **`GPIO 27`** | `PIN_MOTOR_LEFT_IN2` | Azul | `IN 2` (L298N) | PWM Motor Esquerdo Sentido B (LEDC 1) |
+| **`GPIO 14`** | `PIN_MOTOR_RIGHT_IN3` | Amarelo | `IN 3` (L298N) | PWM Motor Direito Sentido A (LEDC 2) |
+| **`GPIO 13`** | `PIN_MOTOR_RIGHT_IN4` | Verde | `IN 4` (L298N) | PWM Motor Direito Sentido B (LEDC 3) |
+| **`GPIO 25`** | `PIN_HEADLIGHT_MOSFET` | Cinza | `TRIG/PWM` (MOSFET) | Controle PWM/Digital dos Faróis (LEDC 4) |
+| **`GPIO 21` (`SDA`)** | `PIN_I2C_SDA` | Amarelo | `SDA` (MLX90614) | Dados I2C + Pull-up `4.7kΩ` em `3V3` |
+| **`GPIO 22` (`SCL`)** | `PIN_I2C_SCL` | Verde | `SCL` (MLX90614) | Clock I2C + Pull-up `4.7kΩ` em `3V3` |
+| **`3V3`** | — | Laranja | `VIN` (MLX90614) | Alimentação 3.3V do sensor e pull-ups |
+| **`VIN` (`5V`)** | — | Branco/Vermelho | Trilho `+` 5V | Alimentação da placa (remover ao gravar via USB) |
+| **`GND`** | — | Preto/Branco | Trilho `-` GND | Referência comum de terra (0V) |
+
+---
+
+## 4. Gravação e Teste Rápido (VS Code + PlatformIO)
 
 1. **Gravar ESP32 DevKit V1 (Master):**
-   * Remova temporariamente o jumper `VIN/5V` (Branco/Vermelho) da protoboard antes de plugar o USB.
-   * Selecione `env:esp32_hardware` na barra inferior do VS Code e clique na seta `->` (Upload).
-2. **Gravar ESP32-CAM (Slave):**
-   * Use a ESP32 DevKit V1 em Modo Ponte (`EN` no `GND` e `IO0` da CAM no `GND`), selecione `env:esp32cam_hardware` e clique em `->` (Upload).
-3. **Testar os Motores e Sensores:**
-   * Conecte o celular/PC no Wi-Fi `ROBO_INSPETOR_UGV` (senha `12345678`) e abra `http://192.168.4.1`, ou pressione `t` no Monitor Serial do VS Code para executar o Auto-Teste sequencial dos 4 canais de motor e farol.
+   - Remova temporariamente o jumper `VIN/5V` da protoboard antes de plugar o cabo USB.
+   - Selecione `env:esp32_hardware` no PlatformIO e clique em **Upload** (`→`).
+2. **Testar Motores, Sensores e Dashboard:**
+   - Conecte no Wi-Fi `ROBO_INSPETOR_UGV` (senha `12345678`) e acesse `http://192.168.4.1` (ou `http://ugv.local`), ou pressione `t` no Monitor Serial para rodar o auto-teste sequencial.
