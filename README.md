@@ -22,11 +22,11 @@
 
 ```mermaid
 flowchart LR
-    Op["Operador (Browser)\nW3C Gamepad API / Teclado"] -->|HTTP + mDNS (ugv.local)| ESP["ESP32 DevKit V1\n(Firmware + Dashboard + Watchdog 1000ms)"]
-    ESP -->|4x PWM (LEDC)| L298["Ponte H L298N\n(Tração 24V Skid-Steer)"]
-    ESP -->|I2C (SDA/SCL)| MLX["Sensor Térmico\nMLX90614 (IR)"]
-    ESP -->|PWM (GPIO 25)| MOS["Módulo MOSFET\n(Faróis LED 12V)"]
-    CAM["Câmera / Vídeo MJPEG"] -.->|Stream Tempo Real| Op
+    Op["Operador (Browser)<br/>W3C Gamepad API / Teclado"] -->|"HTTP + mDNS (ugv.local)"| ESP["ESP32 DevKit V1<br/>(Firmware + Dashboard + Watchdog 1000ms)"]
+    ESP -->|"4x PWM (LEDC)"| L298["Ponte H L298N<br/>(Tração 24V Skid-Steer)"]
+    ESP -->|"I2C (SDA/SCL)"| MLX["Sensor Térmico<br/>MLX90614 (IR)"]
+    ESP -->|"PWM (GPIO 25)"| MOS["Módulo MOSFET<br/>(Faróis LED 12V)"]
+    CAM["Câmera / Vídeo MJPEG"] -.->|"Stream Tempo Real"| Op
 ```
 
 ### Decisões Técnicas & Trade-offs
